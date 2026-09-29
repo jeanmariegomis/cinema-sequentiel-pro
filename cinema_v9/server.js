@@ -85,9 +85,19 @@ function getAgnesKey(req) {
   return (fromClient && fromClient.trim()) || getAgnesKey(req) || '';
 }
 
-const PORT = Number(process.env.PORT || 3000);
-const AGNES_API_KEY = getAgnesKey(req) || '';
-const API_BASE = 'https://apihub.agnes-ai.com/v1';
+const AGNES_API_KEY = process.env.AGNES_API_KEY || '';
+
+function getApiKeyForRequest(req) {
+  try {
+    if (typeof getAgnesKey === 'function') {
+      const k = getAgnesKey(req);
+      if (k) return k;
+    }
+  } catch {}
+  return process.env.AGNES_API_KEY || AGNES_API_KEY || '';
+}
+
+
 const MODEL_VIDEO = 'agnes-video-v2.0';
 const FRAME_RATE = 24;
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -119,9 +129,9 @@ async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function createVideoTask(scene){
   const body = { model: MODEL_VIDEO, prompt: scene.prompt, num_frames: scene.frames, frame_rate: FRAME_RATE };
   if (scene.image) body.image = scene.image;
-  const res = await fetch(API_BASE + '/videos', {
-    method:'POST', headers:{'Authorization':'Bearer '+AGNES_API_KEY,'Content-Type':'application/json'}, body:JSON.stringify(body)
-  });
+  const res = await fetch(API_BASE + '/videos/'+videoId, {
+  headers:{'Authorization':'Bearer '+(process.env.AGNES_API_KEY || AGNES_API_KEY)}
+});
   const txt = await res.text();
   if (!res.ok) throw new Error('Creation HTTP '+res.status+' — '+txt.slice(0,300));
   const data = JSON.parse(txt);
