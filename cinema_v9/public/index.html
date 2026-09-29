@@ -21,134 +21,2135 @@
 :where(code, pre, kbd, samp) {
   font-family: "Optimistic Mono", ui-monospace, monospace;
 }
+</style><style>
+@font-face {
+  font-family: "Optimistic";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/OptimisticAI_VF_Optimized.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Optimistic Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/OptimisticMono_W_TextRegular.woff2") format("woff2");
+}
+:where(html) {
+  font-family: "Optimistic", system-ui, sans-serif;
+}
+:where(code, pre, kbd, samp) {
+  font-family: "Optimistic Mono", ui-monospace, monospace;
+}
 </style>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cinéma Séquentiel Pro V9 - Sécurisé</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cinéma Séquentiel Pro v8.2 — Anime 3D + Référence + Chaînage</title>
 <style>
-  :root{--bg:#0f0f14;--card:#1c1c27;--accent:#a855f7;--accent2:#ec4899;--ok:#22c55e;--warn:#f59e0b}
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:#e5e7eb;font-family:Inter,system-ui,sans-serif}
-  .container{max-width:900px;margin:0 auto;padding:20px}
-  .header{text-align:center;padding:24px 0}
-  .header h1{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:32px;margin:0}
-  .header p{opacity:.6;margin-top:8px}
-  .card{background:var(--card);border:1px solid #2a2a3a;border-radius:16px;padding:20px;margin:16px 0}
-  .badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
-  .badge-secure{background:#22c55e22;color:var(--ok);border:1px solid var(--ok)}
-  .badge-oblig{background:var(--warn);color:#000}
-  .chain{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
-  .chain-step{background:#2a2a3a;padding:8px 14px;border-radius:999px;font-size:13px}
-  input[type="file"], textarea, input[type="text"]{width:100%;background:#0f0f14;border:1px solid #333;border-radius:10px;color:#fff;padding:12px;margin:8px 0}
-  textarea{min-height:80px;resize:vertical}
-  button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:0;color:white;padding:12px 20px;border-radius:10px;font-weight:700;cursor:pointer;width:100%;margin-top:8px}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .scene{border:1px dashed #444;border-radius:12px;padding:14px;margin:12px 0;background:#15151f}
-  .scene-header{display:flex;justify-content:space-between;align-items:center}
-  .status{font-size:12px;opacity:.7}
-  #log{background:#000;color:#0f0;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap}
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+        --bg: #0a0a0c; --panel: #14141a; --panel-2: #1c1c24; --panel-3: #24242e;
+        --border: #2a2a36; --border-light: #34343f;
+        --ink: #f0f0f5; --ink-dim: #8a8a96; --ink-faint: #5a5a66;
+        --success: #10b981; --error: #ef4444; --warn: #f59e0b; --info: #3b82f6;
+        --accent: #8b5cf6; --accent-2: #6366f1; --accent-3: #ec4899;
+        --gold: #fbbf24;
+        --radius: 14px;
+    }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background: var(--bg); color: var(--ink); min-height: 100vh;
+        padding: 1.5rem 1rem 8rem; font-size: 15px; line-height: 1.5;
+        max-width: 980px; margin: 0 auto;
+        background-image:
+            radial-gradient(ellipse at top, rgba(139,92,246,0.08) 0%, transparent 50%),
+            radial-gradient(ellipse at bottom, rgba(99,102,241,0.05) 0%, transparent 50%);
+        background-attachment: fixed;
+    }
+    header { margin-bottom: 1.8rem; text-align: center; position: relative; }
+    h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.4rem;
+         background: linear-gradient(120deg, #8b5cf6, #ec4899, #6366f1);
+         -webkit-background-clip: text; background-clip: text; color: transparent;
+         filter: drop-shadow(0 2px 8px rgba(139,92,246,0.3)); }
+    .subtitle { font-size: 0.82rem; color: var(--ink-dim); font-style: italic; letter-spacing: 0.02em; }
+
+    .toast {
+        position: fixed; top: 1.5rem; left: 50%;
+        transform: translateX(-50%) translateY(-140px);
+        background: var(--panel); color: #fff;
+        padding: 1rem 1.5rem; border-radius: 14px;
+        font-size: 0.85rem; font-weight: 600;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--border);
+        z-index: 1000; opacity: 0;
+        transition: transform 0.4s cubic-bezier(.2,.9,.3,1), opacity 0.35s ease;
+        max-width: 90vw; text-align: center;
+        display: flex; align-items: center; gap: 0.7rem;
+        backdrop-filter: blur(20px);
+    }
+    .toast.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--success); box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--success), 0 0 30px rgba(16,185,129,0.2); }
+    .toast.error { border-color: var(--error); box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--error), 0 0 30px rgba(239,68,68,0.2); }
+    .toast.warn { border-color: var(--warn); }
+
+    .info-banner {
+        background: linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(99,102,241,0.06) 100%);
+        border: 1px solid rgba(139,92,246,0.25);
+        padding: 1rem 1.2rem; border-radius: 12px;
+        font-size: 0.8rem; color: #c8c8d4;
+        margin-bottom: 1.4rem; line-height: 1.6;
+        backdrop-filter: blur(10px);
+    }
+    .info-banner strong { color: #f0f0f5; }
+    .info-banner code {
+        background: rgba(139,92,246,0.15); padding: 0.15rem 0.45rem;
+        border-radius: 5px; font-size: 0.78rem;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        color: #d4b8ff;
+    }
+
+    .flow-steps {
+        display: flex; align-items: center; gap: 0.5rem;
+        margin: 0.8rem 0; flex-wrap: wrap;
+        font-size: 0.72rem;
+    }
+    .flow-step {
+        padding: 0.35rem 0.7rem; border-radius: 20px;
+        background: rgba(139,92,246,0.12); color: #c8b3f5;
+        font-weight: 700;
+    }
+    .flow-arrow { color: var(--ink-faint); }
+
+    .section {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: var(--radius); margin-bottom: 1rem;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .section-header {
+        padding: 1.1rem 1.3rem; cursor: pointer; user-select: none;
+        display: flex; justify-content: space-between; align-items: center;
+        transition: background 0.15s;
+    }
+    .section-header:active { background: var(--panel-2); }
+    .section-title {
+        font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.12em;
+        color: var(--ink-dim); font-weight: 700;
+        display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .section-title .badge {
+        display: inline-block; padding: 0.18rem 0.55rem;
+        background: var(--accent); color: #fff; border-radius: 20px;
+        font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em;
+    }
+    .section-title .badge.soft { background: var(--accent-2); }
+    .section-title .badge.gold { background: var(--gold); color: #1a1a1a; }
+    .section-title .badge.gray { background: var(--ink-faint); }
+    .section-title .badge.success { background: var(--success); }
+    .section-title .badge.error { background: var(--error); }
+    .section-header .chevron {
+        font-size: 0.7rem; color: var(--ink-faint); transition: transform 0.25s;
+    }
+    .section.open .section-header .chevron { transform: rotate(180deg); }
+    .section-body { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+    .section.open .section-body { max-height: 10000px; }
+    .section-content { padding: 0 1.3rem 1.3rem; }
+
+    .api-panel {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.2rem 1.4rem;
+        margin-bottom: 1rem; transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .api-panel.ok { border-color: var(--success); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .api-key-input {
+        width: 100%; padding: 1rem 1.1rem;
+        border-radius: 10px; border: 1px solid var(--border);
+        background: var(--panel-2); color: var(--ink);
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 0.85rem; margin-bottom: 0.8rem;
+        transition: border-color 0.2s;
+    }
+    .api-key-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
+    .api-save-btn {
+        width: 100%; padding: 0.9rem 1.2rem;
+        border-radius: 10px; border: none;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        color: #fff;
+        font-size: 0.9rem; font-weight: 700; font-family: inherit;
+        cursor: pointer; transition: opacity 0.2s, transform 0.1s;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 4px 12px rgba(139,92,246,0.3);
+    }
+    .api-save-btn:active { transform: scale(0.98); }
+    .api-status-line {
+        font-size: 0.76rem; padding: 0.65rem 0.95rem;
+        border-radius: 8px; margin-bottom: 0.5rem;
+        display: flex; align-items: center; gap: 0.6rem;
+        background: var(--panel-2); color: var(--ink-dim);
+        transition: all 0.3s;
+    }
+    .api-status-line.ok { background: rgba(16,185,129,0.1); color: var(--success); font-weight: 600; }
+    .api-status-line .status-dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        background: var(--ink-faint); flex-shrink: 0;
+        transition: background 0.3s, box-shadow 0.3s;
+    }
+    .api-status-line.ok .status-dot {
+        background: var(--success);
+        box-shadow: 0 0 8px var(--success);
+    }
+    .api-hint { font-size: 0.72rem; color: var(--ink-dim); margin-top: 0.5rem; line-height: 1.5; }
+    .api-hint a { color: var(--accent); text-decoration: none; font-weight: 600; border-bottom: 1px dashed currentColor; }
+
+    .stat-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+        margin-top: 0.7rem;
+    }
+    .stat-item {
+        padding: 0.6rem 0.8rem; background: var(--panel-2); border-radius: 8px;
+        font-size: 0.72rem; color: var(--ink-dim);
+    }
+    .stat-item strong { color: var(--ink); display: block; font-size: 0.82rem; margin-top: 0.15rem; }
+    .wake-status {
+        font-size: 0.73rem; padding: 0.6rem 0.9rem;
+        border-radius: 8px; margin-top: 0.6rem;
+        display: flex; justify-content: space-between; align-items: center;
+        background: rgba(59,130,246,0.1); color: #7ba8f0;
+        flex-wrap: wrap; gap: 0.5rem;
+        border: 1px solid rgba(59,130,246,0.2);
+    }
+    .wake-status.active { background: rgba(16,185,129,0.1); color: var(--success); border-color: rgba(16,185,129,0.25); }
+    .wake-status.warn { background: rgba(245,158,11,0.1); color: var(--warn); border-color: rgba(245,158,11,0.25); }
+    .wake-status button {
+        background: rgba(255,255,255,0.05); border: 1px solid currentColor;
+        color: inherit; padding: 0.35rem 0.8rem; border-radius: 8px;
+        font-size: 0.7rem; cursor: pointer; font-family: inherit; font-weight: 600;
+    }
+
+    .storyboard-input, .bible-input {
+        width: 100%; padding: 1.1rem;
+        border-radius: 10px; border: 1px solid var(--border);
+        background: var(--panel-2); color: var(--ink);
+        font-family: inherit; font-size: 0.88rem;
+        resize: vertical; line-height: 1.65;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .storyboard-input { min-height: 220px; }
+    .bible-input { min-height: 140px; }
+    .storyboard-input:focus, .bible-input:focus {
+        outline: none; border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+    }
+    .storyboard-hint {
+        font-size: 0.73rem; color: var(--ink-dim);
+        margin-top: 0.6rem; line-height: 1.55;
+    }
+    .storyboard-hint code {
+        background: rgba(139,92,246,0.12); padding: 0.12rem 0.4rem;
+        border-radius: 4px; font-size: 0.72rem;
+        color: #c8b3f5; font-family: ui-monospace, monospace;
+    }
+
+    .scene-list { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; }
+    .scene-card {
+        background: var(--panel-2); border-radius: 12px;
+        padding: 1rem; border: 1px solid var(--border);
+        border-left: 4px solid var(--accent);
+        transition: border-color 0.2s, background 0.2s;
+        position: relative;
+    }
+    .scene-card.processing {
+        border-left-color: var(--gold);
+        background: linear-gradient(90deg, rgba(251,191,36,0.05) 0%, var(--panel-2) 100%);
+    }
+    .scene-card.done { border-left-color: var(--success); }
+    .scene-card.failed { border-left-color: var(--error); }
+    .scene-card-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 0.6rem; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .scene-card-title {
+        font-size: 0.8rem; font-weight: 800; color: var(--accent);
+        text-transform: uppercase; letter-spacing: 0.06em;
+        display: flex; align-items: center; gap: 0.5rem;
+    }
+    .scene-card-status {
+        font-size: 0.68rem; padding: 0.25rem 0.7rem; border-radius: 20px;
+        background: var(--ink-faint); color: #fff; font-weight: 700;
+        white-space: nowrap; letter-spacing: 0.03em;
+    }
+    .scene-card-status.pending { background: rgba(90,90,102,0.5); }
+    .scene-card-status.processing { background: var(--gold); color: #1a1a1a; }
+    .scene-card-status.done { background: var(--success); }
+    .scene-card-status.failed { background: var(--error); }
+    .scene-card-text {
+        font-size: 0.82rem; color: var(--ink); line-height: 1.55;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .scene-ref-badge {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.25rem 0.65rem; border-radius: 20px;
+        background: rgba(139,92,246,0.15); color: #c8b3f5;
+        font-size: 0.68rem; font-weight: 700;
+        margin-top: 0.4rem;
+    }
+    .scene-ref-badge.text-only {
+        background: rgba(99,102,241,0.15); color: #a5b4fc;
+    }
+    .scene-ref-thumb {
+        width: 44px; height: 44px; border-radius: 6px;
+        object-fit: cover; margin-top: 0.5rem;
+        border: 2px solid var(--border-light);
+    }
+    .scene-card-actions {
+        display: flex; gap: 0.5rem; margin-top: 0.7rem; flex-wrap: wrap;
+    }
+    .scene-card-actions button {
+        font-size: 0.7rem; padding: 0.4rem 0.85rem; border-radius: 7px;
+        border: 1px solid var(--border-light); background: var(--panel-3);
+        color: var(--ink-dim); cursor: pointer; font-family: inherit;
+        font-weight: 600; transition: all 0.15s;
+    }
+    .scene-card-actions button:hover { border-color: var(--accent); color: var(--accent); }
+
+    .storyboard-summary {
+        margin-top: 1rem; padding: 0.9rem 1.1rem;
+        background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(99,102,241,0.06));
+        border: 1px solid rgba(139,92,246,0.2);
+        border-radius: 10px; font-size: 0.78rem; color: #c8c8d4;
+        display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;
+        font-weight: 600;
+    }
+
+    .control-row { margin-bottom: 1.1rem; }
+    .control-row:last-child { margin-bottom: 0; }
+    .control-label {
+        display: block; font-size: 0.72rem; color: var(--ink-dim);
+        margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 700;
+    }
+    select {
+        width: 100%; padding: 0.85rem 1rem; border-radius: 10px;
+        border: 1px solid var(--border); background: var(--panel-2);
+        color: var(--ink); font-family: inherit; font-size: 0.88rem;
+        -webkit-appearance: none; appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238a8a96' d='M6 8L0 0h12z'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 1rem center;
+        background-size: 11px;
+        transition: border-color 0.2s;
+    }
+    select:focus { outline: none; border-color: var(--accent); }
+
+    .radio-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .radio-option {
+        flex: 1; min-width: 85px;
+        padding: 0.75rem 0.7rem; border-radius: 10px;
+        border: 2px solid var(--border); background: var(--panel-2);
+        cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .radio-option:active { transform: scale(0.97); }
+    .radio-option.selected {
+        border-color: var(--accent); background: rgba(139,92,246,0.1);
+        box-shadow: 0 0 0 3px rgba(139,92,246,0.1);
+    }
+    .radio-option .ro-label { font-size: 0.82rem; font-weight: 700; color: var(--ink); }
+    .radio-option .ro-desc { font-size: 0.62rem; color: var(--ink-dim); margin-top: 0.2rem; }
+
+    .btn-primary {
+        width: 100%; padding: 1.2rem; border-radius: var(--radius);
+        border: none; color: #fff;
+        background: linear-gradient(120deg, #8b5cf6, #ec4899);
+        font-size: 1.05rem; font-weight: 800; font-family: inherit;
+        cursor: pointer; margin-bottom: 0.8rem;
+        box-shadow: 0 8px 24px rgba(139,92,246,0.4);
+        letter-spacing: 0.02em;
+        transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+    }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); box-shadow: 0 4px 12px rgba(139,92,246,0.3); }
+    .btn-primary:disabled {
+        opacity: 0.3; cursor: not-allowed;
+        background: var(--ink-faint); box-shadow: none;
+    }
+    .btn-secondary {
+        width: 100%; padding: 0.95rem; border-radius: var(--radius);
+        border: 2px solid var(--accent); background: transparent;
+        color: var(--accent); font-size: 0.92rem; font-weight: 700;
+        font-family: inherit; cursor: pointer; margin-bottom: 0.8rem;
+        transition: all 0.2s;
+    }
+    .btn-secondary:active { background: rgba(139,92,246,0.1); }
+    .btn-stop {
+        width: 100%; padding: 0.9rem; border-radius: var(--radius);
+        border: 2px solid var(--error); background: rgba(239,68,68,0.05);
+        color: var(--error); font-size: 0.88rem; font-weight: 700;
+        font-family: inherit; cursor: pointer; margin-bottom: 0.8rem;
+        display: none;
+    }
+    .btn-stop.visible { display: block; }
+
+    .queue { margin-top: 1.2rem; }
+    .queue-summary {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 0.8rem;
+        font-size: 0.8rem; display: flex; justify-content: space-between;
+        align-items: center; flex-wrap: wrap; gap: 0.6rem;
+    }
+    .queue-summary .progress-text { color: var(--ink); font-weight: 800; }
+    .queue-summary .eta-text { color: var(--ink-dim); font-weight: 600; }
+    .progress-bar {
+        width: 100%; height: 8px; background: var(--panel-3); border-radius: 4px;
+        overflow: hidden; margin-top: 0.6rem;
+    }
+    .progress-bar-fill {
+        height: 100%; background: linear-gradient(90deg, #8b5cf6, #ec4899);
+        border-radius: 4px; transition: width 0.4s ease;
+        box-shadow: 0 0 12px rgba(139,92,246,0.5);
+    }
+    .queue-item {
+        display: flex; align-items: center; gap: 0.8rem;
+        padding: 0.75rem 1rem; border-radius: 10px;
+        border: 1px solid var(--border); margin-bottom: 0.5rem;
+        background: var(--panel); font-size: 0.82rem;
+        transition: all 0.3s;
+    }
+    .queue-item.pending { opacity: 0.5; }
+    .queue-item.processing { border-color: var(--gold); background: linear-gradient(90deg, rgba(251,191,36,0.05), var(--panel)); }
+    .queue-item.done { border-color: rgba(16,185,129,0.4); }
+    .queue-item.failed { border-color: rgba(239,68,68,0.4); }
+    .queue-item .q-icon { font-size: 1rem; width: 1.5rem; text-align: center; flex-shrink: 0; }
+    .queue-item .q-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .queue-item .q-status { font-size: 0.72rem; color: var(--ink-dim); text-align: right; flex-shrink: 0; }
+
+    .gallery { margin-top: 1.5rem; }
+    .gallery-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 0.9rem;
+    }
+    .gallery-item {
+        border-radius: var(--radius); overflow: hidden;
+        border: 1px solid var(--border); background: #000;
+        animation: fadeIn 0.4s ease; position: relative;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .gallery-item:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .gallery-item video { width: 100%; display: block; aspect-ratio: 9/16; object-fit: cover; }
+    .gallery-item .g-caption {
+        padding: 0.55rem 0.75rem; background: var(--panel);
+        font-size: 0.72rem; color: var(--ink-dim); font-weight: 600;
+    }
+    .gallery-item .g-badge {
+        position: absolute; top: 0.5rem; left: 0.5rem;
+        background: rgba(0,0,0,0.75); color: #fff; padding: 0.25rem 0.7rem;
+        border-radius: 20px; font-size: 0.65rem; font-weight: 800;
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .status-bar {
+        position: fixed; bottom: 0; left: 0; right: 0;
+        background: rgba(20,20,26,0.95); color: #fff; padding: 0.9rem 1.3rem;
+        font-size: 0.78rem; display: flex; align-items: center; gap: 0.8rem;
+        transform: translateY(100%); transition: transform 0.35s cubic-bezier(.2,.9,.3,1);
+        z-index: 100;
+        box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+        backdrop-filter: blur(20px);
+        border-top: 1px solid var(--border);
+    }
+    .status-bar.visible { transform: translateY(0); }
+    .status-bar .spinner {
+        width: 16px; height: 16px; border: 2px solid rgba(139,92,246,0.3);
+        border-top-color: var(--accent); border-radius: 50%;
+        animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .hidden { display: none !important; }
+
+    #noSleepCanvas { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; z-index: -1; }
+    #noSleepVideo { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; z-index: -1; }
+
+    .final-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+        z-index: 999; display: none; align-items: center; justify-content: center;
+        padding: 1rem; backdrop-filter: blur(12px);
+    }
+    .final-overlay.visible { display: flex; }
+    .final-card {
+        background: var(--panel); border-radius: 20px; max-width: 520px; width: 100%;
+        padding: 1.6rem; text-align: center;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+        animation: fadeIn 0.4s ease;
+    }
+    .final-card h2 {
+        font-size: 1.3rem; margin-bottom: 0.5rem;
+        background: linear-gradient(120deg, #8b5cf6, #ec4899);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .final-card .fc-sub { font-size: 0.8rem; color: var(--ink-dim); margin-bottom: 1.2rem; }
+    .final-card video { width: 100%; border-radius: 12px; background: #000; margin-bottom: 1.2rem; max-height: 60vh; }
+    .final-card .fc-actions { display: flex; gap: 0.6rem; }
+    .final-card .fc-actions button {
+        flex: 1; padding: 0.9rem; border-radius: 10px; border: none;
+        font-family: inherit; font-weight: 700; font-size: 0.88rem; cursor: pointer;
+        transition: transform 0.1s, opacity 0.2s;
+    }
+    .final-card .fc-actions button:active { transform: scale(0.97); }
+    .final-card .fc-actions .primary { background: linear-gradient(120deg, #8b5cf6, #ec4899); color: #fff; }
+    .final-card .fc-actions .secondary { background: var(--panel-3); color: var(--ink); border: 1px solid var(--border-light); }
+
+    .debug-log {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 0.68rem; color: var(--ink-dim);
+        background: #000; padding: 0.8rem; border-radius: 8px;
+        max-height: 200px; overflow-y: auto; line-height: 1.5;
+        border: 1px solid var(--border);
+        margin-top: 0.8rem;
+    }
+    .debug-log .log-line { padding: 0.05rem 0; }
+    .debug-log .log-line.error { color: #f77; }
+    .debug-log .log-line.success { color: #7f7; }
+    .debug-log .log-line.info { color: #7af; }
+    .debug-log .log-line.warn { color: #fa7; }
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <h1>Cinéma Séquentiel Pro V9</h1>
-    <p>Plan séquence continu · Référence visuelle + chaînage automatique</p>
-    <span class="badge badge-secure">🔒 Mode sécurisé : Clé API dans Render uniquement</span>
-  </div>
 
-  <div class="card">
-    <h3>🔒 Sécurité</h3>
-    <p style="font-size:13px;opacity:.8">Ta clé AGNES_API_KEY est stockée uniquement côté serveur dans Render > Environment. Elle n'apparaît jamais dans cette page ni dans le code source. Pour changer de clé : Render > Environment > AGNES_API_KEY > Save, rebuild, and deploy.</p>
-    <div class="chain">
-      <span class="chain-step">✍️ Scène 1 = texte seul</span><span>→</span>
-      <span class="chain-step">🖼️ Dernière image extraite</span><span>→</span>
-      <span class="chain-step">🔗 Référence Scène 2</span><span>→</span>
-      <span class="chain-step">♾️ Répété jusqu'à la fin</span>
-    </div>
-    <p style="font-size:13px">L'image de référence démarre la scène 1. Ensuite chaque scène démarre sur la dernière image de la précédente. Résultat : un plan séquence continu avec cohérence visuelle.</p>
-  </div>
-
-  <div class="card" style="border-color:var(--warn)">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h3 style="margin:0">🖼️ IMAGE DE RÉFÉRENCE - SCÈNE 1 <span class="badge badge-oblig">OBLIGATOIRE POUR CHAÎNAGE</span></h3>
-    </div>
-    <div style="margin-top:12px;background:#0f0f14;padding:12px;border-radius:8px;font-size:13px">
-      <div><span style="color:var(--warn)">Scène 1</span> = ton image de référence uploadée ci-dessous</div>
-      <div><span style="color:var(--ok)">Scène 2</span> = dernière image de la Scène 1 (extraction auto)</div>
-      <div><span style="color:var(--accent)">Scène 3+</span> = dernière image de la scène précédente</div>
-    </div>
-    <input type="file" id="refImage" accept="image/*">
-    <img id="preview" style="max-width:100%;margin-top:10px;border-radius:8px;display:none">
-  </div>
-
-  <div class="card">
-    <h3>🎬 Scènes</h3>
-    <div id="scenes"></div>
-    <button onclick="addScene()">+ Ajouter une scène</button>
-    <button id="generateBtn" onclick="generate()">🚀 LANCER LA GÉNÉRATION SÉQUENTIELLE</button>
-    <div id="log" style="margin-top:12px;display:none"></div>
+<div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
+  <div style="width:min(420px,100%);background:#151b2e;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#fff;">
+    <h1 style="margin:0 0 8px;font-size:26px;">🔒 Cinéma Séquentiel Pro</h1>
+    <p style="margin:0 0 22px;opacity:.75;">Projet personnel — connexion requise</p>
+    <label for="private-password" style="display:block;margin-bottom:8px;font-weight:600;">Mot de passe</label>
+    <input id="private-password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid #3a435f;background:#0e1425;color:#fff;box-sizing:border-box;font-size:16px;">
+    <button id="private-login-btn" type="button" style="width:100%;margin-top:14px;padding:13px;border:0;border-radius:10px;font-weight:700;cursor:pointer;font-size:16px;">Se connecter</button>
+    <div id="private-login-error" style="display:none;margin-top:12px;color:#ff8b8b;">Mot de passe incorrect.</div>
   </div>
 </div>
 
-<script>
-let sceneCount = 1;
-const scenesDiv = document.getElementById('scenes');
+<!-- 🔒 API masquée - sécurisée dans Render Environment AGNES_API_KEY -->
+<div class="info-banner" style="border-color:#10b981; background: rgba(16,185,129,0.08);">
+<strong>🔒 Mode sécurisé activé</strong> — Clé API configurée dans Render. Aucun affichage sur le site.
+</div>
 
-function addScene(text=''){
-  sceneCount++;
-  const id = sceneCount;
-  const div = document.createElement('div');
-  div.className='scene';
-  div.id='scene-'+id;
-  div.innerHTML=`
-    <div class="scene-header"><strong>Scène ${id}</strong><span class="status" id="status-${id}">En attente</span></div>
-    <textarea id="prompt-${id}" placeholder="Décris l'action de la scène ${id}... Ex: la caméra avance lentement, le personnage se retourne...">${text}</textarea>
-    <div style="font-size:11px;opacity:.5">Référence auto : dernière image de la scène ${id-1}</div>
-  `;
-  scenesDiv.appendChild(div);
-}
 
-function init(){
-  scenesDiv.innerHTML=`
-    <div class="scene" id="scene-1">
-      <div class="scene-header"><strong>Scène 1</strong><span class="status" id="status-1">En attente</span></div>
-      <textarea id="prompt-1" placeholder="Décris l'action de la scène 1... Ex: plan large d'une ville futuriste au crépuscule..."></textarea>
-      <div style="font-size:11px;opacity:.5">Utilisera ton image de référence uploadée</div>
+<header>
+    <h1>Cinéma Séquentiel Pro v6</h1>
+    <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
+</header>
+
+<div class="info-banner">
+    <strong>Fonctionnement automatique :</strong>
+    <div class="flow-steps">
+        <span class="flow-step">✍️ Scène 1 = texte seul</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">🖼️ Dernière image extraite</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">🔗 Référence de la scène 2</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">♾️ Répété jusqu'à la fin</span>
     </div>
-  `;
-  addScene();
-}
-init();
+    <strong>L'image de référence est utilisée pour démarrer la scène 1. Ensuite, <strong>chaque scène suivante démarre sur la dernière image extraite de la précédente</strong>. Résultat : un <strong>plan séquence continu</strong> avec une meilleure cohérence visuelle.
+</div>
 
-document.getElementById('refImage').addEventListener('change', e=>{
-  const file=e.target.files[0]; if(!file) return;
-  const url=URL.createObjectURL(file);
-  const img=document.getElementById('preview'); img.src=url; img.style.display='block';
+
+<!-- === ZONE IMAGE DE RÉFÉRENCE VISIBLE TOUJOURS === -->
+<div class="api-panel" id="ref-panel" style="border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.15);background:linear-gradient(135deg,#14141a,#1a1610)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <span style="font-size:.8rem;font-weight:800;letter-spacing:.08em;color:#fbbf24">🖼️ IMAGE DE RÉFÉRENCE - SCÈNE 1</span>
+        <span style="font-size:.6rem;padding:.2rem .5rem;background:#fbbf24;color:#000;border-radius:20px;font-weight:800">OBLIGATOIRE POUR CHAÎNAGE</span>
+    </div>
+    <div class="info-banner" style="margin-bottom:1rem;border-color:rgba(251,191,36,.3)">
+        <strong style="color:#fbbf24">Scène 1</strong> = ton image de référence uploadée ci-dessous<br>
+        <strong style="color:#10b981">Scène 2</strong> = dernière image de la Scène 1 (extraction auto corrigée)<br>
+        <strong style="color:#8b5cf6">Scène 3+</strong> = dernière image de la scène précédente
+    </div>
+    <div id="ref-upload-zone" style="border:3px dashed #fbbf24;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;background:#1c1c24;transition:.2s">
+        <div id="ref-placeholder" style="font-size:.9rem">
+            📁 <strong>Clique ici pour ajouter ton image de référence</strong><br>
+            <span style="font-size:.75rem;color:var(--ink-dim)">JPG, PNG, WEBP - Cette image sera le first frame de la Scène 1</span><br>
+            <span style="font-size:.7rem;color:#fbbf24;margin-top:.5rem;display:inline-block">Glisser-déposer possible</span>
+        </div>
+        <img id="ref-preview" style="display:none;max-width:100%;max-height:260px;border-radius:12px;margin:1rem auto 0;border:2px solid #fbbf24">
+        <div id="ref-info" style="display:none;font-size:.75rem;color:var(--ink-dim);margin-top:.8rem;background:rgba(0,0,0,.3);padding:.5rem;border-radius:8px"></div>
+    </div>
+    <input type="file" id="ref-file-input" accept="image/*" style="display:none">
+    <div style="display:flex;gap:.6rem;margin-top:.8rem">
+        <button type="button" id="ref-clear-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--border);background:var(--panel-3);color:var(--ink);font-size:.8rem;display:none">🗑 Supprimer</button>
+        <button type="button" id="ref-preview-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--accent);background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;display:none">👁️ Voir en grand</button>
+    </div>
+    <div id="ref-status" style="margin-top:.8rem;font-size:.75rem;color:#fbbf24;display:none"></div>
+</div>
+
+
+<!-- === EXTRACTEUR OFFLINE v7.1 - API CONSERVÉE === -->
+<div class="api-panel" id="offline-panel" style="border-color:#fbbf24;background:linear-gradient(135deg,#1a1610,#14141a)">
+    <div style="font-size:.8rem;font-weight:800;color:#fbbf24;margin-bottom:.6rem">🛠️ EXTRACTEUR OFFLINE (si code 4)</div>
+    <div style="font-size:.72rem;color:#a8a8b8;margin-bottom:.8rem">Ton navigateur content://com.transsion bloque le fetch Agnes. Ce bouton lit ton clip .mp4 déjà téléchargé en local, sans contact Agnes.</div>
+    <button type="button" id="offline-btn" style="width:100%;padding:.8rem;border-radius:10px;border:1px solid #fbbf24;background:rgba(251,191,36,.15);color:#fbbf24;font-weight:700;cursor:pointer">📁 Choisir un clip .mp4 local</button>
+    <input type="file" id="offline-input" accept="video/*" style="display:none">
+    <div id="offline-result" style="display:none;margin-top:.8rem"></div>
+    <canvas id="offline-canvas" style="display:none"></canvas>
+</div>
+
+<div class="api-panel" id="api-panel">
+    <input type="password" class="api-key-input" id="api-key-input"
+           placeholder="Collez votre clé API Agnes AI ici (sk-...)" autocomplete="off" spellcheck="false">
+    <button type="button" class="api-save-btn" id="api-save-btn">Enregistrer la clé API</button>
+    <div class="api-status-line" id="api-status-line">
+        <span class="status-dot"></span>
+        <span id="api-status-text">Aucune clé API enregistrée</span>
+    </div>
+    <div class="api-hint">
+        Clé gratuite sur <a href="https://platform.agnes-ai.com" target="_blank">platform.agnes-ai.com</a> → Settings → API Keys
+    </div>
+    <div class="stat-grid">
+        <div class="stat-item">Durée moy. / clip<strong id="stat-speed">en attente</strong></div>
+        <div class="stat-item">Générations<strong id="stat-samples">0</strong></div>
+    </div>
+    <div class="wake-status" id="wake-status">
+        <span id="wake-status-text">💤 Veille automatique</span>
+        <button type="button" id="wake-toggle-btn">Garder l'écran allumé</button>
+    </div>
+</div>
+
+<div class="section open" id="section-bible">
+    <div class="section-header" data-toggle="section-bible">
+        <span class="section-title">📖 Bible visuelle <span class="badge gold">étape 1</span> <span class="badge">cohérence</span></span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        <div class="section-content">
+            <textarea class="bible-input" id="bible-input" spellcheck="false"
+                placeholder="Décrivez UNE FOIS l'univers visuel qui doit rester identique dans TOUTES les scènes.
+
+Exemple :
+Personnage : jeune femme 25 ans, cheveux bruns longs, yeux verts, veste cuir noir, jean brut.
+Décor : rue urbaine humide la nuit, néons roses et bleus, pavés mouillés.
+Lumière : nocturne contrastée, reflets dans les flaques, halo de néons.
+Palette : bleu profond, magenta, cyan, noir.
+Style : hyper réaliste cinéma, grain film 35mm, objectif anamorphique."></textarea>
+            <div class="storyboard-hint">
+                💡 Ce texte est la <strong>fondation du film</strong>. Il est réinjecté dans <strong>chaque scène</strong> pour garantir la cohérence (identité, décor, lumière, palette).
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section open" id="section-storyboard">
+    <div class="section-header" data-toggle="section-storyboard">
+        <span class="section-title">📜 Scénario des scènes <span class="badge gold">étape 2</span></span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        <div class="section-content">
+            <textarea class="storyboard-input" id="storyboard-input" spellcheck="false"
+                placeholder="Écrivez les scènes, séparées par une ligne vide ou ---.
+
+La scène 1 décrit la situation initiale. Les scènes suivantes doivent décrire des MOUVEMENTS CONTINUS (comme si la caméra tournait sans s'arrêter).
+
+Exemple :
+
+Un homme marche lentement dans une rue déserte au crépuscule. La pluie tombe doucement, les néons se reflètent dans les flaques. La caméra le suit de dos.
+
+---
+
+Il continue d'avancer, la caméra glisse sur le côté pour révéler son visage de profil. Il regarde au loin, pensif.
+
+---
+
+Il ralentit et s'arrête devant une vitrine éclairée. Son reflet apparaît dans la vitre. Il lève lentement la main vers son propre reflet.
+
+---
+
+Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésite, puis fait un signe de la main."></textarea>
+            <div class="storyboard-hint">
+                💡 Écrivez comme un <strong>plan séquence</strong> : chaque scène doit être la continuation naturelle de la précédente. Évitez les changements brusques de lieu ou d'action.
+            </div>
+            <button type="button" class="btn-secondary" id="parse-scenes-btn" style="margin-top:0.9rem;">
+                ✂️ Analyser et découper en scènes
+            </button>
+            <div class="storyboard-summary hidden" id="storyboard-summary">
+                <span id="summary-scenes">0 scène</span>
+                <span id="summary-duration">Durée estimée : 0s</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section open" id="section-scenes">
+    <div class="section-header" data-toggle="section-scenes">
+        <span class="section-title">🎬 Scènes découpées <span class="badge soft">étape 3</span></span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        <div class="section-content">
+            <div class="scene-list" id="scene-list"></div>
+            <div class="hidden" id="no-scenes-msg" style="text-align:center; padding:2rem; color:var(--ink-dim); font-size:0.85rem;">
+                Aucune scène. Écrivez votre scénario et cliquez sur « Analyser ».
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section" id="section-settings">
+    <div class="section-header" data-toggle="section-settings">
+        <span class="section-title">⚙️ Réglages avancés</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        <div class="section-content">
+            <div class="control-row">
+                <label class="control-label">Durée par scène</label>
+                <div class="radio-group" id="duration-group">
+                    <div class="radio-option" data-frames="121">
+                        <div class="ro-label">~5 s</div>
+                        <div class="ro-desc">121 f</div>
+                    </div>
+                    <div class="radio-option" data-frames="241">
+                        <div class="ro-label">~10 s</div>
+                        <div class="ro-desc">241 f</div>
+                    </div>
+                    <div class="radio-option" data-frames="361">
+                        <div class="ro-label">~15 s</div>
+                        <div class="ro-desc">361 f · sûr</div>
+                    </div>
+                    <div class="radio-option" data-frames="441">
+                        <div class="ro-label">~18,4 s</div>
+                        <div class="ro-desc">441 f · max</div>
+                    </div>
+                    <div class="radio-option selected" data-frames="481">
+                        <div class="ro-label">~20 s</div>
+                        <div class="ro-desc">481 f · test</div>
+                    </div>
+                    <div class="radio-option" data-frames="601">
+                        <div class="ro-label">~25 s</div>
+                        <div class="ro-desc">601 f · test</div>
+                    </div>
+                    <div class="radio-option" data-frames="721">
+                        <div class="ro-label">~30 s</div>
+                        <div class="ro-desc">721 f · test</div>
+                    </div>
+                </div>
+                <div class="storyboard-hint" style="margin-top:0.6rem;">
+                    ⚠️ Les durées <strong>20 s, 25 s et 30 s</strong> sont expérimentales. Si l'API les refuse, l'application retente automatiquement une durée inférieure acceptée (18,4 s → 15 s → 10 s…). Détails dans le <strong>Journal technique</strong>.
+                </div>
+            </div>
+            <div class="control-row">
+                <label class="control-label">Qualité visuelle</label>
+                <select id="quality-select">
+                    <option value="anime3d" selected>🎨 Anime 3D — cinématographique</option>
+                    <option value="cinematic">🎬 Cinématographique</option>
+                    <option value="photorealistic">🎥 Hyper réaliste — cinéma</option>
+                    <option value="documentary">📹 Documentaire</option>
+                    <option value="dreamlike">💭 Onirique</option>
+                </select>
+            </div>
+            <div class="control-row">
+                <label class="control-label">Langue des dialogues</label>
+                <select id="language-select">
+                    <option value="fr" selected>🇫🇷 Français uniquement</option>
+                    <option value="en">🇬🇧 Anglais uniquement</option>
+                    <option value="es">🇪🇸 Espagnol uniquement</option>
+                    <option value="de">🇩🇪 Allemand uniquement</option>
+                    <option value="it">🇮🇹 Italien uniquement</option>
+                </select>
+            </div>
+            <div class="storyboard-hint" style="margin-top:0.4rem;">🔒 <strong>Sous-titres désactivés :</strong> les dialogues restent audio uniquement.</div>
+            <div class="storyboard-hint" style="margin-top:0.4rem;">🔒 <strong>Verrouillage audio :</strong> la langue sélectionnée est imposée à toutes les scènes et le modèle ne doit pas changer de langue.</div>
+            <div class="storyboard-hint" style="margin-top:0.4rem;">🛡️ <strong>Mode V8 :</strong> l'image maître est réutilisée pour toutes les scènes. Aucun décodage MP4 ni Worker FFmpeg n'est nécessaire sur le téléphone.</div>
+            <div class="control-row">
+                <label class="control-label">Mouvement global</label>
+                <select id="motion-select">
+                    <option value="auto" selected>Automatique</option>
+                    <option value="slow">Lent et contemplatif</option>
+                    <option value="medium">Normal</option>
+                    <option value="dynamic">Dynamique</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button type="button" class="btn-primary" id="generate-btn" disabled>
+    🎬 Générer le film complet
+</button>
+<button type="button" class="btn-stop" id="stop-btn">
+    ⏹ Arrêter la génération
+</button>
+
+<div class="queue hidden" id="queue"></div>
+
+<div class="gallery hidden" id="gallery">
+    <div class="section-title" style="margin-bottom:0.8rem;">🎞️ Clips générés</div>
+    <div class="gallery-grid" id="gallery-grid"></div>
+</div>
+
+<div class="section" id="section-debug">
+    <div class="section-header" data-toggle="section-debug">
+        <span class="section-title">🔍 Journal technique</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        <div class="section-content">
+            <div class="debug-log" id="debug-log"></div>
+        </div>
+    </div>
+</div>
+
+<div class="status-bar" id="status-bar">
+    <div class="spinner"></div>
+    <span id="status-text">Préparation…</span>
+</div>
+
+<div class="toast" id="toast">
+    <span class="toast-icon" id="toast-icon">✓</span>
+    <span id="toast-text">Message</span>
+</div>
+
+<div class="final-overlay" id="final-overlay">
+    <div class="final-card">
+        <h2>🎬 Votre film est prêt</h2>
+        <div class="fc-sub" id="final-info">0 scènes · 0:00</div>
+        <video id="final-video" controls playsinline></video>
+        <div class="fc-actions">
+            <button class="secondary" id="final-close">Fermer</button>
+            <button class="primary" id="final-download">⬇ Télécharger</button>
+        </div>
+    </div>
+</div>
+
+<canvas id="noSleepCanvas" width="2" height="2"></canvas>
+<video id="noSleepVideo" playsinline muted loop></video>
+
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js" crossorigin="anonymous"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════
+const API_BASE = 'https://apihub.agnes-ai.com/v1';
+const POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+const MODEL_VIDEO = 'agnes-video-v2.0';
+const FRAME_RATE = 24;
+
+let createIntervalMs = 62000;
+const CREATE_INTERVAL_MIN = 62000;
+const CREATE_INTERVAL_MAX = 90000;
+const CREATE_INTERVAL_SAFE = 75000;
+const POLL_INTERVAL_SEC = 8;
+const MAX_POLL_ATTEMPTS = 120;
+
+const API_KEY_STORAGE = 'agnes_api_key';
+const WAKE_LOCK_PREF = 'agnes_wakelock_enabled';
+const TIMING_CACHE_KEY = 'agnes_timing_cache_pro_v6';
+
+// Paliers de fallback si l'API refuse la durée demandée
+const FRAMES_FALLBACK_CHAIN = [721, 601, 481, 441, 361, 241, 121];
+
+// ══════════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════════
+let toastTimeout = null;
+function showToast(message, type = 'success', duration = 2800) {
+    const toast = document.getElementById('toast');
+    const icon = document.getElementById('toast-icon');
+    const text = document.getElementById('toast-text');
+    if (!toast || !icon || !text) return;
+    toast.classList.remove('visible', 'success', 'error', 'warn');
+    void toast.offsetWidth;
+    const icons = { success: '✓', error: '✕', warn: '⚠' };
+    icon.textContent = icons[type] || '✓';
+    text.textContent = message;
+    toast.classList.add(type);
+    requestAnimationFrame(() => toast.classList.add('visible'));
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('visible'), duration);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DEBUG LOG
+// ══════════════════════════════════════════════════════════════════
+function addLog(message, type = '') {
+    const log = document.getElementById('debug-log');
+    if (!log) return;
+    const line = document.createElement('div');
+    line.className = 'log-line ' + type;
+    const time = new Date().toLocaleTimeString('fr-FR', { hour12: false });
+    line.textContent = '[' + time + '] ' + message;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    while (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ANTI-VEILLE
+// ══════════════════════════════════════════════════════════════════
+let wakeLockSentinel = null;
+let wakeLockEnabled = false;
+let canvasStream = null;
+let canvasInterval = null;
+
+function isWakeLockSupported() {
+    return 'wakeLock' in navigator && typeof navigator.wakeLock.request === 'function';
+}
+async function requestWakeLockAPI() {
+    if (!isWakeLockSupported()) return false;
+    try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        wakeLockSentinel.addEventListener('release', () => {
+            wakeLockSentinel = null;
+            updateWakeStatus();
+        });
+        return true;
+    } catch (e) { return false; }
+}
+async function releaseWakeLockAPI() {
+    if (wakeLockSentinel) {
+        try { await wakeLockSentinel.release(); } catch (e) {}
+        wakeLockSentinel = null;
+    }
+}
+function startCanvasStream() {
+    if (canvasStream) return true;
+    try {
+        const canvas = document.getElementById('noSleepCanvas');
+        const video = document.getElementById('noSleepVideo');
+        if (!canvas || !video) return false;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return false;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (typeof canvas.captureStream !== 'function') return false;
+        canvasStream = canvas.captureStream(1);
+        let toggle = false;
+        canvasInterval = setInterval(() => {
+            toggle = !toggle;
+            ctx.fillStyle = toggle ? '#000000' : '#010101';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }, 1000);
+        video.srcObject = canvasStream;
+        video.muted = true;
+        video.playsInline = true;
+        const playPromise = video.play();
+        if (playPromise && playPromise.catch) playPromise.catch(() => {});
+        return true;
+    } catch (e) { return false; }
+}
+function stopCanvasStream() {
+    if (canvasInterval) { clearInterval(canvasInterval); canvasInterval = null; }
+    const video = document.getElementById('noSleepVideo');
+    if (video) { try { video.pause(); video.srcObject = null; } catch (e) {} }
+    if (canvasStream) {
+        try { canvasStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        canvasStream = null;
+    }
+}
+async function activateWakeLock() {
+    let success = false;
+    if (isWakeLockSupported()) success = await requestWakeLockAPI();
+    if (!success) success = startCanvasStream();
+    if (!success && !canvasStream) success = startCanvasStream();
+    return success;
+}
+async function deactivateWakeLock() {
+    await releaseWakeLockAPI();
+    stopCanvasStream();
+}
+function updateWakeStatus() {
+    const el = document.getElementById('wake-status');
+    const txt = document.getElementById('wake-status-text');
+    const btn = document.getElementById('wake-toggle-btn');
+    if (!el || !txt || !btn) return;
+    el.classList.remove('active', 'warn');
+    const hasAnyMechanism = isWakeLockSupported() ||
+        (document.getElementById('noSleepCanvas')?.captureStream);
+    if (!hasAnyMechanism) {
+        el.classList.add('warn');
+        txt.textContent = '⚠️ Non supporté';
+        btn.style.display = 'none';
+        return;
+    }
+    btn.style.display = 'inline-block';
+    const isActive = wakeLockSentinel !== null || canvasStream !== null;
+    if (wakeLockEnabled && isActive) {
+        el.classList.add('active');
+        txt.textContent = '✅ Écran maintenu allumé';
+        btn.textContent = 'Désactiver';
+    } else if (wakeLockEnabled && !isActive) {
+        el.classList.add('warn');
+        txt.textContent = '⏳ En attente';
+        btn.textContent = 'Désactiver';
+    } else {
+        txt.textContent = '💤 Veille automatique';
+        btn.textContent = 'Garder l\'écran allumé';
+    }
+}
+async function toggleWakeLock() {
+    if (wakeLockEnabled) {
+        wakeLockEnabled = false;
+        await deactivateWakeLock();
+        try { localStorage.setItem(WAKE_LOCK_PREF, '0'); } catch (e) {}
+        showToast('Veille automatique réactivée', 'warn');
+    } else {
+        wakeLockEnabled = true;
+        const ok = await activateWakeLock();
+        try { localStorage.setItem(WAKE_LOCK_PREF, '1'); } catch (e) {}
+        if (ok) showToast('L\'écran va rester allumé', 'success');
+        else showToast('Activez manuellement', 'warn');
+    }
+    updateWakeStatus();
+}
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && wakeLockEnabled) {
+        await activateWakeLock();
+        updateWakeStatus();
+    }
 });
-
-function log(msg){
-  const l=document.getElementById('log'); l.style.display='block'; l.textContent+=`[${new Date().toLocaleTimeString()}] ${msg}\n`; l.scrollTop=l.scrollHeight;
+async function ensureWakeLockActive() {
+    if (!wakeLockEnabled) return;
+    if (wakeLockSentinel === null && canvasStream === null) {
+        await activateWakeLock();
+        updateWakeStatus();
+    }
 }
 
-async function generate(){
-  const refFile=document.getElementById('refImage').files[0];
-  if(!refFile){ alert('Upload ton image de référence pour la scène 1 !'); return; }
-  const btn=document.getElementById('generateBtn'); btn.disabled=true; btn.textContent='Génération en cours...';
-  log('Démarrage génération V9 sécurisée...');
-  log('Clé API utilisée : celle de Render (serveur)');
-  
-  // TODO: Brancher ici sur /api/generate de ton server.js V9
-  // Le server.js utilisera process.env.AGNES_API_KEY automatiquement
-  // Exemple :
-  // const form = new FormData();
-  // form.append('refImage', refFile);
-  // form.append('scenes', JSON.stringify([...prompts]));
-  // const res = await fetch('/api/generate-sequential', {method:'POST', body: form});
-  
-  log('⚠️ Remplace ce index.html dans ton projet public/index.html et push sur GitHub');
-  log('Ensuite ton serveur utilisera bien AGNES_API_KEY de Render sans la demander ici');
-  btn.disabled=false; btn.textContent='🚀 LANCER LA GÉNÉRATION SÉQUENTIELLE';
+// ══════════════════════════════════════════════════════════════════
+// CACHE TEMPS
+// ══════════════════════════════════════════════════════════════════
+function loadTimingCache() {
+    try { return JSON.parse(localStorage.getItem(TIMING_CACHE_KEY) || '{}'); }
+    catch (e) { return {}; }
 }
+function saveTimingCache(cache) {
+    try { localStorage.setItem(TIMING_CACHE_KEY, JSON.stringify(cache)); } catch (e) {}
+}
+function recordGenerationTime(numFrames, durationMs) {
+    const cache = loadTimingCache();
+    const key = String(numFrames);
+    if (!cache[key]) cache[key] = [];
+    cache[key].push(durationMs);
+    if (cache[key].length > 10) cache[key] = cache[key].slice(-10);
+    saveTimingCache(cache);
+    updateTimingDisplay();
+}
+function estimateGenerationTime(numFrames) {
+    const cache = loadTimingCache();
+    const samples = cache[String(numFrames)];
+    if (samples && samples.length > 0) {
+        const sorted = [...samples].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0 ? (sorted[mid-1] + sorted[mid]) / 2 : sorted[mid];
+    }
+    return 30000 + numFrames * 500;
+}
+function updateTimingDisplay() {
+    const cache = loadTimingCache();
+    const all = Object.values(cache).flat();
+    const speedEl = document.getElementById('stat-speed');
+    const samplesEl = document.getElementById('stat-samples');
+    if (!speedEl || !samplesEl) return;
+    if (all.length === 0) {
+        speedEl.textContent = 'en attente';
+        samplesEl.textContent = '0';
+        return;
+    }
+    const avg = all.reduce((a, b) => a + b, 0) / all.length;
+    speedEl.textContent = (avg / 1000).toFixed(1) + ' s';
+    samplesEl.textContent = String(all.length);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ÉTAT
+// ══════════════════════════════════════════════════════════════════
+const state = {
+    scenes: [],
+    bible: '',
+    initialRefImage: null,
+    initialRefDataUrl: null,
+    isRunning: false,
+    stopRequested: false,
+    completed: 0,
+    failed: 0,
+    durationFrames: 481,
+    quality: 'anime3d',
+    motion: 'auto',
+    creationAttemptsSinceLastError: 0,
+    ffmpegLoaded: false
+};
+
+// ══════════════════════════════════════════════════════════════════
+// CLÉ API
+// ══════════════════════════════════════════════════════════════════
+function getApiKey() {
+    try { return (localStorage.getItem(API_KEY_STORAGE) || '').trim(); }
+    catch (e) { return ''; }
+}
+function saveApiKey() {
+    const input = document.getElementById('api-key-input');
+    if (!input) return;
+    const key = input.value.trim();
+    if (!key) {
+        try { localStorage.removeItem(API_KEY_STORAGE); } catch (e) {}
+        updateApiPanel();
+        showToast('Clé supprimée', 'warn');
+        return;
+    }
+    if (!key.startsWith('sk-')) {
+        if (!confirm('La clé ne commence pas par "sk-". La sauvegarder quand même ?')) return;
+    }
+    try {
+        localStorage.setItem(API_KEY_STORAGE, key);
+        updateApiPanel();
+        showToast('Clé API enregistrée ✓', 'success');
+        input.blur();
+    } catch (e) {
+        showToast('Erreur lors de la sauvegarde', 'error');
+    }
+}
+function updateApiPanel() {
+    const panel = document.getElementById('api-panel');
+    const input = document.getElementById('api-key-input');
+    const statusLine = document.getElementById('api-status-line');
+    const statusText = document.getElementById('api-status-text');
+    const key = getApiKey();
+    if (!panel || !input || !statusLine || !statusText) return;
+    if (key) {
+        panel.classList.add('ok');
+        statusLine.classList.add('ok');
+        statusText.textContent = 'Clé active · ' + key.slice(0, 8) + '…' + key.slice(-4);
+        input.value = key;
+        input.placeholder = '';
+    } else {
+        panel.classList.remove('ok');
+        statusLine.classList.remove('ok');
+        statusText.textContent = 'Aucune clé API enregistrée';
+        input.value = '';
+        input.placeholder = 'Collez votre clé API Agnes AI ici (sk-...)';
+    }
+    updateGenerateBtn();
+}
+function updateGenerateBtn() {
+    const btn = document.getElementById('generate-btn');
+    if (!btn) return;
+    const hasScenes = state.scenes.length > 0;
+    const hasKey = !!getApiKey();
+    btn.disabled = !hasScenes || !hasKey || state.isRunning;
+    if (state.isRunning) {
+        btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
+    } else if (!hasKey) {
+        btn.textContent = '🔑 Ajoutez votre clé API';
+    } else if (!hasScenes) {
+        btn.textContent = '✂️ Découpez d\'abord votre scénario';
+    } else {
+        const durSec = (state.durationFrames / FRAME_RATE).toFixed(1);
+        btn.textContent = '🎬 Générer le plan séquence — ' + state.scenes.length + ' scènes × ' + durSec + 's';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// UTILITAIRES
+// ══════════════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function setStatus(text) {
+    const bar = document.getElementById('status-bar');
+    const txt = document.getElementById('status-text');
+    if (!bar || !txt) return;
+    if (text) { bar.classList.add('visible'); txt.textContent = text; }
+    else bar.classList.remove('visible');
+}
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+function formatEta(seconds) {
+    if (seconds < 60) return Math.round(seconds) + 's';
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return m + 'm' + (s > 0 ? ' ' + s + 's' : '');
+}
+function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return m + ':' + String(s).padStart(2, '0');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DÉCOUPAGE
+// ══════════════════════════════════════════════════════════════════
+function parseStoryboard() {
+    const raw = document.getElementById('storyboard-input').value.trim();
+    if (!raw) { showToast('Écrivez d\'abord votre scénario', 'warn'); return; }
+    let parts = raw.split(/\n\s*---\s*\n/);
+    if (parts.length < 2) parts = raw.split(/\n\s*\n/);
+    if (parts.length < 2) parts = raw.split(/\n\s*\n\s*\n/);
+    const scenes = parts.map(p => p.trim()).filter(p => p.length > 5);
+    if (scenes.length === 0) { showToast('Aucune scène détectée', 'warn'); return; }
+    state.scenes = scenes.map((text, i) => ({
+        index: i, text, status: 'pending',
+        videoUrl: null, error: null, referenceUsed: null,
+        referenceThumb: null, lastFrame: null
+    }));
+    state.completed = 0;
+    state.failed = 0;
+    renderScenes();
+    updateStoryboardSummary();
+    updateGenerateBtn();
+    showToast(scenes.length + ' scène' + (scenes.length > 1 ? 's' : '') + ' détectée' + (scenes.length > 1 ? 's' : ''), 'success');
+    addLog('Scénario découpé : ' + scenes.length + ' scènes', 'success');
+}
+function updateStoryboardSummary() {
+    const summary = document.getElementById('storyboard-summary');
+    const scenesEl = document.getElementById('summary-scenes');
+    const durEl = document.getElementById('summary-duration');
+    if (!summary || !scenesEl || !durEl) return;
+    if (state.scenes.length === 0) { summary.classList.add('hidden'); return; }
+    summary.classList.remove('hidden');
+    scenesEl.textContent = state.scenes.length + ' scène' + (state.scenes.length > 1 ? 's' : '');
+    durEl.textContent = 'Durée estimée : ' + formatTime(state.scenes.length * state.durationFrames / FRAME_RATE);
+}
+function renderScenes() {
+    const container = document.getElementById('scene-list');
+    const noMsg = document.getElementById('no-scenes-msg');
+    if (!container) return;
+    if (state.scenes.length === 0) {
+        container.innerHTML = '';
+        if (noMsg) noMsg.classList.remove('hidden');
+        return;
+    }
+    if (noMsg) noMsg.classList.add('hidden');
+    container.innerHTML = state.scenes.map((s, i) => {
+        const statusCls = s.status || 'pending';
+        const statusLabel = {
+            pending: '⏳ En attente',
+            processing: '⏺ En cours',
+            done: '✓ Terminée',
+            failed: '✕ Échec'
+        }[statusCls] || '⏳ En attente';
+
+        let refBadge = '';
+        if (s.referenceUsed === 'initial-reference') refBadge = '<div class="scene-ref-badge">🖼️ Scène 1 — image de référence</div>';
+        else if (s.referenceUsed === 'text-only') refBadge = '<div class="scene-ref-badge text-only">✍️ Génération texte seul</div>';
+        else if (s.referenceUsed === 'last-frame') refBadge = '<div class="scene-ref-badge">🔗 Référence = dernière image de la scène ' + i + '</div>';
+
+        const refThumb = s.referenceThumb ? '<img class="scene-ref-thumb" src="' + s.referenceThumb + '" alt="">' : '';
+
+        return '<div class="scene-card ' + statusCls + '">' +
+            '<div class="scene-card-header">' +
+                '<span class="scene-card-title">Scène ' + (i + 1) + '</span>' +
+                '<span class="scene-card-status ' + statusCls + '">' + statusLabel + '</span>' +
+            '</div>' +
+            '<div class="scene-card-text">' + esc(s.text.slice(0, 300)) + (s.text.length > 300 ? '…' : '') + '</div>' +
+            refBadge +
+            refThumb +
+            (s.error ? '<div style="font-size:0.72rem;color:var(--error);margin-top:0.4rem;">⚠ ' + esc(s.error) + '</div>' : '') +
+            (s.videoUrl ? '<div style="margin-top:0.6rem;"><video src="' + s.videoUrl + '" controls muted playsinline style="width:100%;max-height:220px;border-radius:10px;"></video></div>' : '') +
+            '<div class="scene-card-actions">' +
+                '<button data-action="edit" data-idx="' + i + '">✏️ Modifier</button>' +
+                (s.videoUrl ? '<button data-action="download" data-idx="' + i + '">⬇ Télécharger</button>' : '') +
+                (i > 0 ? '<button data-action="delete" data-idx="' + i + '">🗑 Supprimer</button>' : '') +
+            '</div>' +
+        '</div>';
+    }).join('');
+
+    container.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', () => editScene(parseInt(btn.dataset.idx, 10)));
+    });
+    container.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', () => deleteScene(parseInt(btn.dataset.idx, 10)));
+    });
+    container.querySelectorAll('[data-action="download"]').forEach(btn => {
+        btn.addEventListener('click', () => downloadSceneVideo(parseInt(btn.dataset.idx, 10)));
+    });
+}
+function editScene(index) {
+    const s = state.scenes[index];
+    if (!s) return;
+    const newText = prompt('Modifier la scène ' + (index + 1) + ' :', s.text);
+    if (newText !== null && newText.trim().length > 5) {
+        s.text = newText.trim();
+        s.status = 'pending'; s.videoUrl = null; s.error = null;
+        renderScenes();
+    }
+}
+function deleteScene(index) {
+    if (index === 0) return;
+    if (!confirm('Supprimer la scène ' + (index + 1) + ' ?')) return;
+    state.scenes.splice(index, 1);
+    state.scenes.forEach((s, i) => s.index = i);
+    renderScenes();
+    updateStoryboardSummary();
+}
+function downloadSceneVideo(index) {
+    const s = state.scenes[index];
+    if (!s || !s.videoUrl) return;
+    const a = document.createElement('a');
+    a.href = s.videoUrl;
+    a.download = 'scene_' + (index + 1) + '.mp4';
+    a.target = '_blank';
+    a.click();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXTRACTION DERNIÈRE IMAGE — MÉTHODE ROBUSTE (fetch + blob)
+// ══════════════════════════════════════════════════════════════════
+async function extractLastFrameLegacy(videoUrl) {
+    // PRIORITÉ : FFmpeg.wasm. Cela évite complètement les problèmes
+    // du <video> HTML5 rencontrés sur certains téléphones Tecno/Android.
+    addLog('🛠️ Extraction dernière frame : méthode FFmpeg prioritaire…', 'info');
+    try {
+        const ffmpeg = await loadFFmpeg();
+        const { fetchFile } = window.FFmpegUtil;
+        const data = await fetchFile(videoUrl);
+        const inputName = 'extract_input_' + Date.now() + '.mp4';
+        const outputName = 'last_frame_' + Date.now() + '.jpg';
+        await ffmpeg.writeFile(inputName, data);
+        addLog('Clip chargé dans FFmpeg : ' + Math.round(data.length / 1024) + ' Ko', 'success');
+        await ffmpeg.exec([
+            '-sseof', '-0.35',
+            '-i', inputName,
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-vf', 'scale=768:-2',
+            outputName
+        ]);
+        const frameData = await ffmpeg.readFile(outputName);
+        const bytes = frameData instanceof Uint8Array ? frameData : new Uint8Array(frameData);
+        let binary = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        const dataUrl = 'data:image/jpeg;base64,' + btoa(binary);
+        try { await ffmpeg.deleteFile(inputName); } catch (e) {}
+        try { await ffmpeg.deleteFile(outputName); } catch (e) {}
+        addLog('✅ Dernière frame extraite par FFmpeg — référence prête pour la scène suivante', 'success');
+        return dataUrl;
+    } catch (ffmpegError) {
+        addLog('⚠️ Extraction FFmpeg échouée : ' + ffmpegError.message + ' — fallback lecteur vidéo', 'warn');
+    }
+
+    // FALLBACK : lecteur vidéo/canvas si FFmpeg n'est pas disponible.
+    addLog('Extraction de secours avec le lecteur vidéo…', 'info');
+    let blobUrl = null;
+    let usedBlob = false;
+    try {
+        const controller = new AbortController();
+        const t = setTimeout(()=>controller.abort(), 20000);
+        const res = await fetch(videoUrl, { mode: 'cors', credentials: 'omit', signal: controller.signal });
+        clearTimeout(t);
+        if (res.ok) {
+            const blob = await res.blob();
+            blobUrl = URL.createObjectURL(blob);
+            usedBlob = true;
+            addLog('Clip téléchargé pour fallback : ' + Math.round(blob.size/1024) + ' Ko', 'success');
+        } else throw new Error('HTTP '+res.status);
+    } catch (e) {
+        addLog('Téléchargement fallback échoué : ' + e.message, 'warn');
+        blobUrl = videoUrl;
+    }
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.crossOrigin = 'anonymous';
+        const timeout = setTimeout(() => { cleanup(); reject(new Error('Timeout extraction')); }, 30000);
+        const cleanup = () => {
+            clearTimeout(timeout);
+            if (usedBlob && blobUrl && blobUrl.startsWith('blob:')) { try { URL.revokeObjectURL(blobUrl); } catch(e) {} }
+            try { video.remove(); } catch(e) {}
+        };
+        video.addEventListener('loadedmetadata', () => {
+            const duration = video.duration;
+            addLog('Fallback vidéo chargée : ' + (isFinite(duration)?duration.toFixed(2):'?') + 's', 'info');
+            video.currentTime = (!isFinite(duration) || duration <= 0.5) ? 0.1 : Math.max(0, duration - 0.35);
+        });
+        video.addEventListener('seeked', () => {
+            try {
+                const canvas = document.createElement('canvas');
+                const targetW = 768;
+                const ratio = video.videoHeight / video.videoWidth;
+                canvas.width = targetW;
+                canvas.height = Math.round(targetW * ratio);
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                cleanup();
+                resolve(dataUrl);
+            } catch (e) { cleanup(); reject(new Error('Erreur canvas : ' + e.message)); }
+        });
+        video.addEventListener('error', () => {
+            const code = video.error ? video.error.code : '?';
+            cleanup();
+            reject(new Error('Erreur décodage vidéo code ' + code));
+        });
+        video.src = blobUrl;
+        video.load();
+    });
+}
+
+async function extractLastFrameOfflineLegacy(file){
+    return new Promise((resolve, reject)=>{
+        const url = URL.createObjectURL(file);
+        const video = document.createElement('video');
+        video.src = url;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        const timeout = setTimeout(()=>{ cleanup(); reject(new Error('Timeout offline')); }, 20000);
+        const cleanup = ()=>{ clearTimeout(timeout); try{ URL.revokeObjectURL(url); video.remove(); }catch(e){} };
+        video.onloadedmetadata = ()=>{ video.currentTime = Math.max(0, video.duration - 0.3); };
+        video.onseeked = ()=>{
+            try{
+                const canvas = document.createElement('canvas');
+                const w=768; const h=Math.round(video.videoHeight*w/video.videoWidth);
+                canvas.width=w; canvas.height=h;
+                canvas.getContext('2d').drawImage(video,0,0,w,h);
+                const dataUrl = canvas.toDataURL('image/jpeg',0.85);
+                cleanup();
+                resolve(dataUrl);
+            }catch(e){ cleanup(); reject(e); }
+        };
+        video.onerror = ()=>{ cleanup(); reject(new Error('Erreur décodage local code '+(video.error?video.error.code:'?')+' - Essaie Chrome')); };
+        video.load();
+    });
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// API
+// ══════════════════════════════════════════════════════════════════
+async function apiFetch(url, options = {}, label = 'API') {
+    for (let attempt = 0; attempt < 7; attempt++) {
+        if (state.stopRequested) throw new Error('Arrêt demandé');
+        try {
+            const res = await fetch(url, options);
+            if (res.status === 429) {
+                state.creationAttemptsSinceLastError = 0;
+                if (createIntervalMs < CREATE_INTERVAL_SAFE) {
+                    createIntervalMs = Math.min(createIntervalMs + 8000, CREATE_INTERVAL_MAX);
+                }
+                const wait = [15, 30, 45, 60, 90, 120, 180][Math.min(attempt, 6)];
+                setStatus('L\'IA se prépare… (' + wait + 's)');
+                addLog('429 — attente ' + wait + 's', 'error');
+                await sleep(wait * 1000);
+                continue;
+            }
+            if (res.status === 503) {
+                const wait = [5, 10, 15, 20, 30, 45][Math.min(attempt, 5)];
+                setStatus('Votre film se prépare… (' + wait + 's)');
+                addLog('503 — attente ' + wait + 's', 'error');
+                await sleep(wait * 1000);
+                continue;
+            }
+            if (res.ok && createIntervalMs > CREATE_INTERVAL_MIN) {
+                state.creationAttemptsSinceLastError++;
+                if (state.creationAttemptsSinceLastError >= 3) {
+                    createIntervalMs = Math.max(createIntervalMs - 4000, CREATE_INTERVAL_MIN);
+                    state.creationAttemptsSinceLastError = 0;
+                }
+            }
+            return res;
+        } catch (e) {
+            if (e.message === 'Arrêt demandé') throw e;
+            const wait = [3, 5, 8, 12, 20, 30][Math.min(attempt, 5)];
+            setStatus('Connexion… (' + wait + 's)');
+            addLog('Réseau : ' + e.message + ' — retry ' + wait + 's', 'error');
+            await sleep(wait * 1000);
+        }
+    }
+    return fetch(url, options);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CRÉATION DE TÂCHE AVEC FALLBACK EN CASCADE
+// ══════════════════════════════════════════════════════════════════
+async function createVideoTask(imageDataUri, prompt) {
+    const attempts = [state.durationFrames];
+    for (const f of FRAMES_FALLBACK_CHAIN) {
+        if (f < state.durationFrames && !attempts.includes(f)) {
+            attempts.push(f);
+        }
+    }
+    attempts.sort((a, b) => b - a);
+
+    let lastError = null;
+
+    for (let i = 0; i < attempts.length; i++) {
+        const frames = attempts[i];
+        const isRetry = i > 0;
+
+        if (isRetry) {
+            addLog('⏬ Fallback : retry avec ' + frames + ' frames (' + (frames / FRAME_RATE).toFixed(1) + 's)', 'warn');
+            setStatus('🔁 Retry en ' + (frames / FRAME_RATE).toFixed(1) + 's…');
+        }
+
+        const body = {
+            model: MODEL_VIDEO,
+            prompt: prompt,
+            num_frames: frames,
+            frame_rate: FRAME_RATE
+        };
+        if (imageDataUri) body.image = imageDataUri;
+
+        try {
+            const res = await apiFetch(API_BASE + '/videos', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + getApiKey(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            }, 'Création');
+
+            if (!res.ok) {
+                const err = await res.text();
+
+                const isDurationIssue =
+                    res.status === 400 ||
+                    res.status === 422 ||
+                    /num_frames|frames|duration|length|invalid|max/i.test(err);
+
+                if (isDurationIssue && i < attempts.length - 1) {
+                    addLog('API refuse ' + frames + ' frames (HTTP ' + res.status + ') → palier inférieur', 'error');
+                    lastError = new Error('HTTP ' + res.status + ' — ' + err.slice(0, 150));
+                    continue;
+                }
+
+                throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 200));
+            }
+
+            const data = await res.json();
+            const videoId = data.video_id || data.id || data.task_id;
+            if (!videoId) throw new Error('Pas de video_id retourné');
+
+            if (isRetry) {
+                addLog('✅ Succès fallback : ' + frames + ' frames (' + (frames / FRAME_RATE).toFixed(1) + 's)', 'success');
+                showToast('Durée ajustée à ' + (frames / FRAME_RATE).toFixed(1) + 's automatiquement', 'warn', 3500);
+            } else {
+                addLog('✅ Tâche créée : ' + frames + ' frames (' + (frames / FRAME_RATE).toFixed(1) + 's)', 'success');
+            }
+            return videoId;
+
+        } catch (e) {
+            lastError = e;
+            if (e.message === 'Arrêt demandé' || /réseau|network|fetch/i.test(e.message)) {
+                throw e;
+            }
+            if (i < attempts.length - 1) {
+                addLog('Retry cascade : ' + e.message, 'warn');
+                continue;
+            }
+        }
+    }
+
+    throw lastError || new Error('Impossible de créer la tâche vidéo');
+}
+
+async function pollVideo(videoId, onProgress) {
+    const estimatedMs = estimateGenerationTime(state.durationFrames);
+    let remaining = Math.max(15, Math.floor((estimatedMs / 1000) * 0.7));
+    while (remaining > 0) {
+        if (state.stopRequested) throw new Error('Arrêt demandé');
+        onProgress('Préparation… — ' + remaining + 's');
+        await sleep(1000);
+        remaining--;
+    }
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+        if (state.stopRequested) throw new Error('Arrêt demandé');
+        if (attempt > 0) {
+            let r = POLL_INTERVAL_SEC;
+            while (r > 0) {
+                if (state.stopRequested) throw new Error('Arrêt demandé');
+                onProgress('Rendu… — ' + r + 's');
+                await sleep(1000);
+                r--;
+            }
+        }
+        const url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL_VIDEO);
+        const res = await apiFetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + getApiKey() }
+        }, 'Polling');
+        const d = await res.json();
+        const status = d.status || 'unknown';
+        const progress = d.progress || 0;
+        onProgress('Rendu… — ' + progress + '%');
+        if (status === 'completed' || status === 'succeeded' || status === 'done') {
+            const videoUrl = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+            if (!videoUrl) throw new Error('Terminé mais pas d\'URL');
+            return videoUrl;
+        }
+        if (status === 'failed' || status === 'error' || status === 'cancelled') {
+            throw new Error('Échec (' + status + ')');
+        }
+    }
+    throw new Error('Délai maximal dépassé');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// QUEUE
+// ══════════════════════════════════════════════════════════════════
+function renderQueue() {
+    const queueEl = document.getElementById('queue');
+    if (!queueEl) return;
+    if (!state.scenes.length) { queueEl.classList.add('hidden'); return; }
+    queueEl.classList.remove('hidden');
+    const total = state.scenes.length;
+    const done = state.completed + state.failed;
+    const inProgress = state.scenes.filter(s => s.status === 'processing').length;
+    const pending = total - done - inProgress;
+    const estGen = estimateGenerationTime(state.durationFrames) / 1000;
+    const eta = pending > 0
+        ? (pending * (createIntervalMs / 1000)) + estGen
+        : (inProgress * estGen / Math.max(inProgress, 1));
+    const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    let html = '<div class="queue-summary">' +
+        '<span class="progress-text">Progression : ' + done + '/' + total + ' (' + progressPct + '%)</span>' +
+        '<span class="eta-text">' + (done < total ? '≈ ' + formatEta(eta) + ' restant' : '✓ Terminé') + '</span>' +
+        '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + progressPct + '%"></div></div>' +
+        '</div>';
+
+    html += state.scenes.map((s, i) => {
+        let icon = '○', statusText = 'En attente', cls = 'pending';
+        if (s.status === 'processing') { icon = '◐'; statusText = 'En cours…'; cls = 'processing'; }
+        else if (s.status === 'done') { icon = '●'; statusText = 'Terminée'; cls = 'done'; }
+        else if (s.status === 'failed') { icon = '✕'; statusText = 'Échec'; cls = 'failed'; }
+        return '<div class="queue-item ' + cls + '">' +
+            '<div class="q-icon">' + icon + '</div>' +
+            '<div class="q-name">Scène ' + (i + 1) + '</div>' +
+            '<div class="q-status">' + esc(statusText) + '</div>' +
+        '</div>';
+    }).join('');
+
+    queueEl.innerHTML = html;
+}
+
+function addToGallery(videoUrl, label) {
+    const galleryEl = document.getElementById('gallery');
+    const galleryGrid = document.getElementById('gallery-grid');
+    if (!galleryEl || !galleryGrid) return;
+    galleryEl.classList.remove('hidden');
+    const el = document.createElement('div');
+    el.className = 'gallery-item';
+    el.innerHTML = '<video controls preload="metadata" muted playsinline>' +
+        '<source src="' + videoUrl + '" type="video/mp4">' +
+        '</video>' +
+        '<div class="g-badge">' + esc(label) + '</div>' +
+        '<div class="g-caption">Clip généré</div>';
+    galleryGrid.appendChild(el);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FFMPEG
+// ══════════════════════════════════════════════════════════════════
+let ffmpegInstance = null;
+function loadScriptOnce(src, id) {
+    return new Promise((resolve, reject) => {
+        if (id && document.getElementById(id)) {
+            const existing = document.getElementById(id);
+            if (existing.dataset.loaded === '1') return resolve();
+            existing.addEventListener('load', () => resolve(), { once:true });
+            existing.addEventListener('error', () => reject(new Error('Chargement CDN échoué: ' + src)), { once:true });
+            return;
+        }
+        const script = document.createElement('script');
+        if (id) script.id = id;
+        script.src = src;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        script.onload = () => { script.dataset.loaded = '1'; resolve(); };
+        script.onerror = () => reject(new Error('Impossible de charger: ' + src));
+        document.head.appendChild(script);
+    });
+}
+async function ensureFFmpegGlobals() {
+    if (window.FFmpegWASM && window.FFmpegUtil) return;
+    addLog('FFmpeg CDN non chargé — rechargement automatique depuis jsDelivr…', 'warn');
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js', 'ffmpeg-lib-script');
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js', 'ffmpeg-util-script');
+    if (!window.FFmpegWASM || !window.FFmpegUtil) {
+        throw new Error('Bibliothèques FFmpeg chargées mais globals FFmpegWASM/FFmpegUtil absents');
+    }
+}
+async function loadFFmpeg() {
+    if (ffmpegInstance) return ffmpegInstance;
+    addLog('Chargement de FFmpeg.wasm…', 'info');
+    await ensureFFmpegGlobals();
+    const { FFmpeg } = window.FFmpegWASM;
+    const { toBlobURL } = window.FFmpegUtil;
+    if (typeof FFmpeg !== 'function' || typeof toBlobURL !== 'function') {
+        throw new Error('API FFmpeg indisponible sur ce navigateur');
+    }
+    const ffmpeg = new FFmpeg();
+    const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+    // IMPORTANT: the app may be opened from content:// / file:// on Android,
+    // which gives the page an opaque (null) origin. A worker loaded directly
+    // from jsDelivr is rejected in that case. Convert the worker itself to a
+    // Blob URL so it inherits the page's origin.
+    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    const workerURL = await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript');
+    await ffmpeg.load({ coreURL, wasmURL, workerURL });
+    ffmpegInstance = ffmpeg;
+    state.ffmpegLoaded = true;
+    addLog('FFmpeg.wasm chargé ✓ (worker local Blob)', 'success');
+    return ffmpeg;
+}
+async function concatenateVideos(videoUrls, onProgress) {
+    const ffmpeg = await loadFFmpeg();
+    const { fetchFile } = window.FFmpegUtil;
+    onProgress('Téléchargement…');
+    for (let i = 0; i < videoUrls.length; i++) {
+        onProgress('Téléchargement clip ' + (i + 1) + '/' + videoUrls.length + '…');
+        const data = await fetchFile(videoUrls[i]);
+        ffmpeg.writeFile('clip_' + String(i).padStart(4, '0') + '.mp4', data);
+    }
+    const listContent = videoUrls.map((_, i) =>
+        "file 'clip_" + String(i).padStart(4, '0') + ".mp4'"
+    ).join('\n');
+    ffmpeg.writeFile('concat_list.txt', listContent);
+    onProgress('Concaténation…');
+    await ffmpeg.exec([
+        '-f', 'concat', '-safe', '0', '-i', 'concat_list.txt',
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '19',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+        'output_final.mp4'
+    ]);
+    onProgress('Lecture du fichier final…');
+    const finalData = ffmpeg.readFile('output_final.mp4');
+    const blob = new Blob([finalData.buffer], { type: 'video/mp4' });
+    for (let i = 0; i < videoUrls.length; i++) {
+        try { ffmpeg.deleteFile('clip_' + String(i).padStart(4, '0') + '.mp4'); } catch (e) {}
+    }
+    try { ffmpeg.deleteFile('concat_list.txt'); } catch (e) {}
+    try { ffmpeg.deleteFile('output_final.mp4'); } catch (e) {}
+    return URL.createObjectURL(blob);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CONSTRUCTION DU PROMPT — COHÉRENCE ANIME 3D
+// ══════════════════════════════════════════════════════════════════
+function buildScenePrompt(sceneText, sceneIndex, totalScenes, hasRef) {
+    const bible = (state.bible || '').trim();
+    const isFirst = sceneIndex === 0;
+    const qualityMap = {
+        anime3d: 'high-end cinematic 3D anime, premium animated feature-film quality, stylized anime characters with consistent anatomy, detailed facial expressions, polished 3D rendering, physically believable lighting, detailed hair and clothing materials',
+        cinematic: 'high-end cinematic animation, premium feature-film quality, detailed materials, realistic lighting, polished rendering',
+        photorealistic: 'hyper-realistic live-action cinema, physically accurate lighting, realistic materials and natural human motion',
+        documentary: 'cinematic documentary realism, natural lighting and restrained camera movement',
+        dreamlike: 'cinematic dreamlike animation, elegant atmospheric lighting, polished 3D rendering'
+    };
+    const languageMap = {
+        fr: 'FRENCH ONLY',
+        en: 'ENGLISH ONLY',
+        es: 'SPANISH ONLY',
+        de: 'GERMAN ONLY',
+        it: 'ITALIAN ONLY'
+    };
+    const selectedLanguage = document.getElementById('language-select')?.value || 'fr';
+    const languageName = languageMap[selectedLanguage] || 'FRENCH ONLY';
+
+    const motionMap = {
+        auto: 'smooth controlled cinematic camera movement, natural character motion',
+        slow: 'slow controlled cinematic camera movement, gentle natural character motion',
+        medium: 'moderate cinematic camera movement, natural character motion',
+        dynamic: 'dynamic but controlled cinematic camera movement, energetic natural character motion'
+    };
+
+    const continuity = `
+ABSOLUTE CONTINUITY RULES:
+- Preserve the exact same character identity from the reference image and previous scene.
+- Same face, eyes, hairstyle, age, skin tone, body proportions and silhouette.
+- Same clothing, colors, accessories and physical details.
+- Same location architecture, furniture, props, time of day, lighting direction and visual palette.
+- Do not redesign, age, beautify, deform or replace the character.
+- Do not introduce unexplained new characters or objects.
+- No text, subtitles, captions, logos or watermark.
+- Maintain natural physics, hands, fingers, facial anatomy and object scale.
+- Use the master reference image as the permanent identity anchor for every scene.
+- Scenes after scene 1 must continue the narrative from the previous scene description without resetting the story, while preserving the same visual identity.
+`;
+
+    const referenceInstruction = hasRef
+        ? (isFirst
+            ? 'MASTER REFERENCE IMAGE: The supplied reference image is authoritative for the first scene. Match its character identity, environment, framing, colors and visual design exactly, then animate naturally from that starting state.'
+            : 'MASTER REFERENCE IMAGE: The same supplied reference image is intentionally reused as the fixed character-and-world reference for this scene. Do NOT treat it as a new story reset. Preserve the exact character identity, clothing, environment, lighting and visual design while continuing the narrative described in this scene.')
+        : 'No image reference is available. Follow the visual bible exactly and establish a stable first frame.';
+
+    return `${qualityMap[state.quality] || qualityMap.anime3d}.
+Vertical 9:16 video, approximately ${(state.durationFrames / FRAME_RATE).toFixed(1)} seconds.
+${motionMap[state.motion] || motionMap.auto}.
+
+VISUAL BIBLE:
+${bible}
+
+${referenceInstruction}
+
+SCENE ${sceneIndex + 1} OF ${totalScenes}:
+${sceneText.trim()}
+
+LANGUAGE ENFORCEMENT FOR THIS SCENE:
+The dialogue written above is the ONLY dialogue that may be spoken.
+Speak it in ${languageName} exactly as written.
+Do not replace its language, pronunciation, wording or order.
+
+CONTINUITY:
+${continuity}
+
+TIMING AND CAMERA:
+Create one coherent continuous shot for this scene. Respect the described action order and dialogue timing. Use cinematic framing, smooth transitions and motivated camera movement. Do not jump to unrelated angles or locations. Keep the character recognizable throughout the entire clip.
+
+ON-SCREEN TEXT LOCK — ABSOLUTE:
+ABSOLUTELY NO SUBTITLES.
+ABSOLUTELY NO CAPTIONS.
+ABSOLUTELY NO SPEECH BUBBLES.
+ABSOLUTELY NO WRITTEN DIALOGUE.
+ABSOLUTELY NO LETTERS, WORDS, NUMBERS OR TYPOGRAPHY.
+ABSOLUTELY NO TEXT GENERATED FROM SPOKEN DIALOGUE.
+ALL DIALOGUE MUST BE AUDIO ONLY WITH NATURAL LIP SYNCHRONIZATION.
+DO NOT DISPLAY ANY SPOKEN WORDS VISUALLY ANYWHERE IN THE VIDEO.
+NO SIGNS, LABELS, MENU TEXT OR DECORATIVE WRITING.
+If text appears in the source/reference image, ignore it and do not reproduce it.
+
+AUDIO / DIALOGUE — ULTRA-STRICT LANGUAGE LOCK:
+SELECTED SPOKEN LANGUAGE: ${languageName}.
+PRIORITY RULE: spoken-language consistency is mandatory and has higher priority than stylistic variation.
+ALL human speech MUST be ${languageName}.
+FOR FRENCH ONLY: every spoken word MUST be French; use natural neutral French pronunciation and French phonetics only.
+NEVER speak English, Japanese, Spanish, German, Italian, Korean, Arabic, Chinese or any other language.
+NEVER mix languages inside one sentence, between sentences, between shots, or between scenes.
+NEVER translate the scripted dialogue into another language.
+NEVER paraphrase, improvise, add or replace dialogue.
+READ THE SCRIPTED FRENCH DIALOGUE EXACTLY AS WRITTEN.
+Use ONE consistent French-speaking voice identity for the same character across the entire film.
+Keep the same voice age, pitch, timbre, accent, pronunciation, speaking rhythm and emotional style across all scenes.
+Synchronize lip movement precisely to the exact spoken dialogue.
+If the video model cannot guarantee the selected spoken language, GENERATE NO SPOKEN WORDS rather than switching to another language.
+If a scene contains no dialogue, generate no speech, no words and no vocal improvisation.
+DIALOGUE IS AUDIO ONLY. NEVER render spoken words as subtitles, captions, text, speech bubbles or graphics.
+NO SPOKEN LANGUAGE OTHER THAN THE SELECTED LANGUAGE.
+`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PIPELINE PRINCIPAL
+// ══════════════════════════════════════════════════════════════════
+async function startGeneration() {
+    if (state.isRunning) return;
+    if (!state.scenes.length) { showToast('Découpez d’abord votre scénario', 'warn'); return; }
+    state.bible = document.getElementById('bible-input').value.trim();
+    if (!state.bible) { showToast('Remplissez la bible visuelle pour garantir la cohérence', 'warn', 4000); return; }
+    if (!state.initialRefDataUrl) { showToast('Ajoutez l’image de référence avant de lancer le film', 'warn', 4000); return; }
+
+    state.isRunning = true;
+    state.stopRequested = false;
+    state.completed = 0;
+    state.failed = 0;
+    state.scenes.forEach(s => { s.status='pending'; s.videoUrl=null; s.error=null; s.referenceUsed=null; s.referenceThumb=null; });
+    document.getElementById('generate-btn').disabled = true;
+    document.getElementById('stop-btn').classList.add('visible');
+    document.getElementById('gallery-grid').innerHTML = '';
+    document.getElementById('gallery').classList.add('hidden');
+    renderScenes(); renderQueue();
+
+    const payload = {
+        scenes: state.scenes.map((scene, i) => ({
+            prompt: buildScenePrompt(scene.text, i, state.scenes.length, true),
+            image: state.initialRefDataUrl,
+            frames: state.durationFrames
+        }))
+    };
+
+    try {
+        addLog('════ ENVOI AU SERVEUR V9.3 ════', 'info');
+        addLog('Le serveur prend maintenant le relais : tu peux fermer Chrome après le lancement.', 'success');
+        const res = await fetch('/api/jobs, {headers: agnesHeaders(), method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Impossible de créer la tâche serveur');
+        const jobId = data.id;
+        localStorage.setItem('cinema_v9_job_id', jobId);
+        addLog('☁️ Job serveur créé : ' + jobId, 'success');
+        showToast('🚀 Génération lancée côté serveur. Tu peux fermer Chrome.', 'success', 7000);
+        await monitorServerJob(jobId);
+    } catch(e) {
+        addLog('❌ Erreur serveur : ' + e.message, 'error');
+        showToast(e.message, 'error', 6000);
+    }
+    state.isRunning=false; state.stopRequested=false;
+    document.getElementById('stop-btn').classList.remove('visible');
+    updateGenerateBtn(); renderQueue();
+}
+
+async function monitorServerJob(jobId) {
+    while (true) {
+        if (state.stopRequested) {
+            try { await fetch('/api/jobs/'+encodeURIComponent(jobId)+'/cancel', {method:'POST'}); } catch(e) {}
+            break;
+        }
+        const res = await fetch('/api/jobs/'+encodeURIComponent(jobId));
+        const job = await res.json();
+        if (!res.ok) throw new Error(job.error || 'Job introuvable');
+        state.completed = job.completed || 0;
+        state.failed = job.failed || 0;
+        (job.scenes || []).forEach((remote, i) => {
+            const local = state.scenes[i]; if (!local) return;
+            local.status = remote.status === 'done' ? 'done' : remote.status === 'failed' ? 'failed' : remote.status === 'processing' ? 'processing' : 'pending';
+            local.videoUrl = remote.videoUrl || null;
+            local.error = remote.error || null;
+            local.referenceUsed = 'master-reference';
+            local.referenceThumb = state.initialRefDataUrl;
+            if (local.videoUrl && !local._shown) { local._shown=true; addToGallery(local.videoUrl,'Scène '+(i+1)); }
+        });
+        renderScenes(); renderQueue();
+        if (job.status === 'completed') {
+            addLog('🎬 Job terminé côté serveur — toutes les scènes sont disponibles.', 'success');
+            showToast('🎬 Toutes les scènes sont prêtes.', 'success', 6000);
+            localStorage.removeItem('cinema_v9_job_id');
+            return;
+        }
+        if (job.status === 'failed' || job.status === 'cancelled') {
+            localStorage.removeItem('cinema_v9_job_id');
+            throw new Error('Job '+job.status);
+        }
+        setStatus('☁️ Génération côté serveur — '+(job.completed||0)+'/'+(job.total||state.scenes.length)+' scène(s) terminée(s)');
+        await sleep(5000);
+    }
+}
+
+async function resumeServerJobIfAny() {
+    const jobId = localStorage.getItem('cinema_v9_job_id');
+    if (!jobId) return;
+    try {
+        addLog('☁️ Reprise automatique du job serveur '+jobId, 'info');
+        state.isRunning=true;
+        await monitorServerJob(jobId);
+    } catch(e) { addLog('Reprise : '+e.message,'error'); }
+    finally { state.isRunning=false; document.getElementById('stop-btn')?.classList.remove('visible'); updateGenerateBtn(); }
+}
+
+function stopGeneration() {
+    if (!state.isRunning) return;
+    state.stopRequested = true;
+    setStatus('Arrêt en cours…');
+    addLog('Arrêt demandé par l\'utilisateur', 'error');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// IMAGE DE RÉFÉRENCE + CHAÎNAGE DÉFINITIF
+// ══════════════════════════════════════════════════════════════════
+function setupRefImageHandlers(){
+    const input = document.getElementById('ref-file-input');
+    const zone = document.getElementById('ref-upload-zone');
+    const preview = document.getElementById('ref-preview');
+    const placeholder = document.getElementById('ref-placeholder');
+    const info = document.getElementById('ref-info');
+    const clearBtn = document.getElementById('ref-clear-btn');
+    const previewBtn = document.getElementById('ref-preview-btn');
+    const status = document.getElementById('ref-status');
+    if(!input || !zone) return;
+
+    const showPreview = (dataUrl, file)=>{
+        state.initialRefDataUrl = dataUrl;
+        state.initialRefImage = file;
+        preview.src = dataUrl;
+        preview.style.display='block';
+        placeholder.innerHTML = '✅ <strong>Image de référence prête</strong><br><span style="font-size:.75rem">Elle sera le first frame de la Scène 1</span>';
+        info.style.display='block';
+        info.innerHTML = file.name + ' (' + Math.round(file.size/1024) + ' Ko) - ' + file.type + '<br><span style="color:#10b981">✔ Scène 1 utilisera cette image</span>';
+        zone.style.borderColor='#10b981';
+        zone.style.borderStyle='solid';
+        zone.style.background='rgba(16,185,129,.08)';
+        clearBtn.style.display='inline-block';
+        previewBtn.style.display='inline-block';
+        status.style.display='block';
+        status.innerHTML='✅ Prêt : Scène 1 = ton image | Scène 2 = dernière frame Scène 1 (auto)';
+        addLog('Image de référence ajoutée : '+file.name+' ('+Math.round(dataUrl.length/1024)+' Ko) - S1 = cette image', 'success');
+        showToast('Référence ajoutée pour Scène 1 ✅', 'success');
+    };
+
+    input.addEventListener('change', e=>{
+        const file = e.target.files[0];
+        if(!file) return;
+        if(!file.type.startsWith('image/')){ showToast('Fichier non image', 'error'); return; }
+        const reader = new FileReader();
+        reader.onload = ev=> showPreview(ev.target.result, file);
+        reader.readAsDataURL(file);
+    });
+
+    clearBtn?.addEventListener('click', ()=>{
+        state.initialRefDataUrl = null;
+        state.initialRefImage = null;
+        preview.style.display='none';
+        preview.src='';
+        placeholder.innerHTML = '📁 <strong>Clique ici pour ajouter ton image de référence</strong><br><span style="font-size:.75rem;color:var(--ink-dim)">JPG, PNG, WEBP - Cette image sera le first frame de la Scène 1</span><br><span style="font-size:.7rem;color:#fbbf24;margin-top:.5rem;display:inline-block">Glisser-déposer possible</span>';
+        info.style.display='none';
+        zone.style.borderColor='#fbbf24';
+        zone.style.borderStyle='dashed';
+        zone.style.background='#1c1c24';
+        clearBtn.style.display='none';
+        previewBtn.style.display='none';
+        status.style.display='none';
+        input.value='';
+        addLog('Image de référence supprimée', 'warn');
+        showToast('Référence supprimée', 'warn');
+    });
+
+    previewBtn?.addEventListener('click', ()=>{
+        if(preview.src) window.open(preview.src, '_blank');
+    });
+
+    zone.addEventListener('click', ()=> input.click());
+    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.borderColor='#8b5cf6'; zone.style.transform='scale(1.02)'; });
+    zone.addEventListener('dragleave', e=>{ zone.style.borderColor='#fbbf24'; zone.style.transform='scale(1)'; });
+    zone.addEventListener('drop', e=>{
+        e.preventDefault();
+        zone.style.transform='scale(1)';
+        const file = e.dataTransfer.files[0];
+        if(file && file.type.startsWith('image/')){
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════
+(function init() {
+    document.getElementById('api-save-btn')?.addEventListener('click', saveApiKey);
+    document.getElementById('api-key-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveApiKey(); }
+    });
+
+    document.querySelectorAll('[data-toggle]').forEach(header => {
+        header.addEventListener('click', () => {
+            document.getElementById(header.dataset.toggle)?.classList.toggle('open');
+        });
+    });
+
+    document.getElementById('parse-scenes-btn')?.addEventListener('click', parseStoryboard);
+    setupRefImageHandlers();
+
+    document.getElementById('bible-input')?.addEventListener('input', e => {
+        state.bible = e.target.value;
+    });
+
+    document.querySelectorAll('#duration-group .radio-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            document.querySelectorAll('#duration-group .radio-option').forEach(o => o.classList.remove('selected'));
+            opt.classList.add('selected');
+            state.durationFrames = parseInt(opt.dataset.frames, 10);
+            updateStoryboardSummary();
+            updateGenerateBtn();
+            addLog('Durée/scène : ' + state.durationFrames + ' frames (' + (state.durationFrames / FRAME_RATE).toFixed(1) + 's)', 'info');
+        });
+    });
+
+    document.getElementById('quality-select')?.addEventListener('change', e => { state.quality = e.target.value; });
+    document.getElementById('motion-select')?.addEventListener('change', e => { state.motion = e.target.value; });
+
+    document.getElementById('generate-btn')?.addEventListener('click', startGeneration);
+    document.getElementById('stop-btn')?.addEventListener('click', stopGeneration);
+
+    document.getElementById('wake-toggle-btn')?.addEventListener('click', toggleWakeLock);
+    try {
+        const saved = localStorage.getItem(WAKE_LOCK_PREF);
+        wakeLockEnabled = saved === '1';
+    } catch (e) {}
+    if (wakeLockEnabled) activateWakeLock().then(() => updateWakeStatus());
+
+    document.getElementById('final-close')?.addEventListener('click', () => {
+        document.getElementById('final-overlay').classList.remove('visible');
+    });
+    document.getElementById('final-download')?.addEventListener('click', () => {
+        const video = document.getElementById('final-video');
+        if (video && video.src) {
+            const a = document.createElement('a');
+            a.href = video.src;
+            a.download = 'film_' + Date.now() + '.mp4';
+            a.click();
+        }
+    });
+
+    updateApiPanel();
+    updateTimingDisplay();
+    updateWakeStatus();
+    renderScenes();
+    updateStoryboardSummary();
+    updateGenerateBtn();
+
+    addLog('Application prête (V9 — génération serveur en arrière-plan)', 'success');
+    setTimeout(resumeServerJobIfAny, 500);
+})();
 </script>
+
+<script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script>
+<script>
+function getAgnesApiKey(){ return ''; /* clé dans Render AGNES_API_KEY */ }
+function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serveur utilise process.env.AGNES_API_KEY */ }
+</script>
+
+
+<script>
+(function () {
+  async function checkStatus() {
+    try {
+      const r = await fetch('/api/auth/status', {credentials:'include'});
+      const data = await r.json();
+      if (data.authenticated) unlock();
+    } catch (_) {}
+  }
+  function unlock() {
+    const gate = document.getElementById('private-login-gate');
+    if (gate) gate.style.display = 'none';
+    document.body.classList.add('private-authenticated');
+  }
+  async function login() {
+    const input = document.getElementById('private-password');
+    const error = document.getElementById('private-login-error');
+    if (!input) return;
+    error.style.display = 'none';
+    try {
+      const r = await fetch('/api/auth/login', {
+        method:'POST',
+        credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({password:input.value})
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.ok) {
+        input.value = '';
+        unlock();
+      } else {
+        error.textContent = data.error === 'AUTH_NOT_CONFIGURED'
+          ? 'Le mot de passe serveur n’est pas encore configuré.'
+          : 'Mot de passe incorrect.';
+        error.style.display = 'block';
+        input.value = '';
+        input.focus();
+      }
+    } catch (_) {
+      error.textContent = 'Serveur inaccessible.';
+      error.style.display = 'block';
+    }
+  }
+  function init() {
+    document.getElementById('private-login-btn')?.addEventListener('click', login);
+    document.getElementById('private-password')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') login();
+    });
+    checkStatus();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script></body>
 </html>
