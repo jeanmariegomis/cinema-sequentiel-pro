@@ -591,14 +591,10 @@
     <canvas id="offline-canvas" style="display:none"></canvas>
 </div>
 
-<div class="api-panel" id="api-panel">
-    <input type="password" class="api-key-input" id="api-key-input"
-           placeholder="Collez votre clé API Agnes AI ici (sk-...)" autocomplete="off" spellcheck="false">
-    <button type="button" class="api-save-btn" id="api-save-btn">Enregistrer la clé API</button>
-    <div class="api-status-line" id="api-status-line">
-        <span class="status-dot"></span>
-        <span id="api-status-text">Aucune clé API enregistrée</span>
-    </div>
+<div class="api-panel ok" id="api-panel" style="border-color:#10b981; background: rgba(16,185,129,0.08);">
+<strong>🔒 Mode sécurisé activé</strong> — Clé API configurée dans Render. Aucun affichage sur le site.
+<div style="font-size:13px; color:#8a8a96; margin-top:6px;">Connexion sécurisée : votre clé API est stockée sur le serveur</div>
+</div>
     <div class="api-hint">
         Clé gratuite sur <a href="https://platform.agnes-ai.com" target="_blank">platform.agnes-ai.com</a> → Settings → API Keys
     </div>
@@ -1085,7 +1081,8 @@ function getApiKey() {
     try { return (localStorage.getItem(API_KEY_STORAGE) || '').trim(); }
     catch (e) { return ''; }
 }
-function saveApiKey() {
+function saveApiKey() { return; /* secure mode */ }
+function saveApiKey_OLD() {
     const input = document.getElementById('api-key-input');
     if (!input) return;
     const key = input.value.trim();
@@ -1107,7 +1104,8 @@ function saveApiKey() {
         showToast('Erreur lors de la sauvegarde', 'error');
     }
 }
-function updateApiPanel() {
+function updateApiPanel() { const p=document.getElementById('api-panel'); if(p){p.classList.add('ok');} return; }
+function updateApiPanel_OLD() {
     const panel = document.getElementById('api-panel');
     const input = document.getElementById('api-key-input');
     const statusLine = document.getElementById('api-status-line');
