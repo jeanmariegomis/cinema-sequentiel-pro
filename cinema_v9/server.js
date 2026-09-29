@@ -3,29 +3,25 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+const PORT = process.env.PORT || 10000;
+const API_BASE = process.env.AGNES_API_BASE || 'https://api.agnes.com';
 const app = express();
+
 // ===== V9.3 PRIVATE SERVER AUTH =====
-
-
 function hashPassword(value) {
   return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
 }
-
 function timingSafeEqualHex(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   try {
     return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
-  } catch (_) {
-    return false;
-  }
+  } catch (_) { return false; }
 }
-
 function getCookie(req, name) {
   const raw = req.headers.cookie || '';
   const part = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
   return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
 }
-
 function makeAuthToken() {
   const exp = Date.now() + 1000 * 60 * 60 * 24 * 30;
   const payload = String(exp);
@@ -33,7 +29,6 @@ function makeAuthToken() {
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   return `${payload}.${sig}`;
 }
-
 function validAuthToken(token) {
   if (!token || !process.env.AUTH_SECRET) return false;
   const [exp, sig] = token.split('.');
@@ -41,62 +36,43 @@ function validAuthToken(token) {
   const expected = crypto.createHmac('sha256', process.env.AUTH_SECRET).update(exp).digest('hex');
   return timingSafeEqualHex(sig, expected);
 }
-
 function requirePrivateAuth(req, res, next) {
   if (validAuthToken(getCookie(req, 'csp_auth'))) return next();
   return res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' });
 }
-
 function setupPrivateAuthRoutes() {
   app.post('/api/auth/login', express.json(), (req, res) => {
     const password = String(req.body?.password || '');
     const expectedHash = process.env.APP_PASSWORD_SHA256 || '';
     const suppliedHash = hashPassword(password);
-
-    if (!expectedHash || !process.env.AUTH_SECRET) {
-      return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
-    }
-
-    if (!timingSafeEqualHex(suppliedHash, expectedHash)) {
-      return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
-    }
-
+    if (!expectedHash || !process.env.AUTH_SECRET) return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
+    if (!timingSafeEqualHex(suppliedHash, expectedHash)) return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
     const token = makeAuthToken();
-    res.setHeader(
-      'Set-Cookie',
-      `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
-    );
+    res.setHeader('Set-Cookie', `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`);
     return res.json({ ok: true });
   });
-
   app.post('/api/auth/logout', (req, res) => {
     res.setHeader('Set-Cookie', 'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
     res.json({ ok: true });
   });
-
   app.get('/api/auth/status', (req, res) => {
     res.json({ authenticated: validAuthToken(getCookie(req, 'csp_auth')) });
   });
 }
 
-// Per-user Agnes AI key: supplied by the V9.1 interface, with env fallback.
+// Per-user Agnes AI key
 function getAgnesKey(req) {
   const fromClient = req.get('X-Agnes-API-Key');
-  return (fromClient && fromClient.trim()) || getAgnesKey(req) || '';
+  return (fromClient && fromClient.trim()) || '';
 }
-
 const AGNES_API_KEY = process.env.AGNES_API_KEY || '';
-
 function getApiKeyForRequest(req) {
   try {
-    if (typeof getAgnesKey === 'function') {
-      const k = getAgnesKey(req);
-      if (k) return k;
-    }
+    const k = getAgnesKey(req);
+    if (k) return k;
   } catch {}
   return process.env.AGNES_API_KEY || AGNES_API_KEY || '';
 }
-
 
 const MODEL_VIDEO = 'agnes-video-v2.0';
 const FRAME_RATE = 24;
@@ -105,16 +81,12 @@ const JOBS_FILE = path.join(DATA_DIR, 'jobs.json');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 setupPrivateAuthRoutes();
-
 app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(process.cwd(), 'public')));
 
-function loadJobs(){
-  try { return JSON.parse(fs.readFileSync(JOBS_FILE,'utf8')); } catch { return {}; }
-}
+function loadJobs(){ try { return JSON.parse(fs.readFileSync(JOBS_FILE,'utf8')); } catch { return {}; } }
 function saveJobs(jobs){ fs.writeFileSync(JOBS_FILE, JSON.stringify(jobs, null, 2)); }
 let jobs = loadJobs();
-
 function safeJob(job){
   return {
     id: job.id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
@@ -123,27 +95,33 @@ function safeJob(job){
     scenes: job.scenes.map((s,i)=>({index:i,status:s.status,videoUrl:s.videoUrl||null,error:s.error||null}))
   };
 }
-
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-async function createVideoTask(scene){
+async function createVideoTask(scene, req){
+  const apiKeyToUse = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
   const body = { model: MODEL_VIDEO, prompt: scene.prompt, num_frames: scene.frames, frame_rate: FRAME_RATE };
   if (scene.image) body.image = scene.image;
-  const res = await fetch(API_BASE + '/videos/'+videoId, {
-  headers:{'Authorization':'Bearer '+(process.env.AGNES_API_KEY || AGNES_API_KEY)}
-});
+  const res = await fetch(API_BASE + '/videos', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization':'Bearer '+ apiKeyToUse
+    },
+    body: JSON.stringify(body)
+  });
   const txt = await res.text();
   if (!res.ok) throw new Error('Creation HTTP '+res.status+' — '+txt.slice(0,300));
   const data = JSON.parse(txt);
   const id = data.video_id || data.id || data.task_id;
-  if (!id) throw new Error('L\'API n\'a pas retourné de video_id');
+  if (!id) throw new Error("L'API n'a pas retourné de video_id");
   return id;
 }
 
-async function pollVideo(videoId){
+async function pollVideo(videoId, req){
+  const apiKeyToUse = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
   for(let attempt=0; attempt<120; attempt++){
     const res = await fetch(API_BASE + '/videos/status?video_id='+encodeURIComponent(videoId)+'&model_name='+encodeURIComponent(MODEL_VIDEO), {
-      headers:{'Authorization':'Bearer '+AGNES_API_KEY}
+      headers:{'Authorization':'Bearer '+ apiKeyToUse}
     });
     const txt = await res.text();
     if(!res.ok) throw new Error('Polling HTTP '+res.status+' — '+txt.slice(0,250));
@@ -162,7 +140,9 @@ async function pollVideo(videoId){
 
 let workerBusy = false;
 async function processJobs(){
-  if(workerBusy || !AGNES_API_KEY) return;
+  if(workerBusy) return;
+  const apiKeyToUse = process.env.AGNES_API_KEY || AGNES_API_KEY;
+  if(!apiKeyToUse) return;
   const job = Object.values(jobs).find(j => j.status === 'queued' || j.status === 'processing');
   if(!job) return;
   workerBusy = true;
@@ -172,9 +152,9 @@ async function processJobs(){
       if(scene.status==='done') continue;
       scene.status='processing'; job.updatedAt=Date.now(); saveJobs(jobs);
       try{
-        const videoId = await createVideoTask(scene);
+        const videoId = await createVideoTask(scene, { get:()=>'' });
         scene.videoId = videoId; job.updatedAt=Date.now(); saveJobs(jobs);
-        scene.videoUrl = await pollVideo(videoId);
+        scene.videoUrl = await pollVideo(videoId, { get:()=>'' });
         scene.status='done'; scene.error=null;
       }catch(e){
         scene.status='failed'; scene.error=e.message;
@@ -189,10 +169,11 @@ async function processJobs(){
   } finally { workerBusy=false; }
 }
 
-app.get('/api/health',(req,res)=>res.json({ok:true,workerConfigured:Boolean(AGNES_API_KEY)}));
+app.get('/api/health',(req,res)=>res.json({ok:true,workerConfigured:Boolean(process.env.AGNES_API_KEY || AGNES_API_KEY)}));
 
 app.post('/api/jobs',requirePrivateAuth, (req,res)=>{
-  if(!AGNES_API_KEY) return res.status(503).json({error:'AGNES_API_KEY non configurée sur le serveur.'});
+  const key = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
+  if(!key) return res.status(503).json({error:'AGNES_API_KEY non configurée sur le serveur.'});
   const {scenes}=req.body||{};
   if(!Array.isArray(scenes)||!scenes.length) return res.status(400).json({error:'Aucune scène.'});
   if(scenes.length>20) return res.status(400).json({error:'Trop de scènes.'});
