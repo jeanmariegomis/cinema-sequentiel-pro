@@ -48,7 +48,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Cinéma Séquentiel Pro v8.2 — Anime 3D + Référence + Chaînage</title>
 <style>
-  <button id="logout-btn" type="button">🔒 Déconnexion</button>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
         --bg: #0a0a0c; --panel: #14141a; --panel-2: #1c1c24; --panel-3: #24242e;
@@ -59,36 +58,6 @@
         --gold: #fbbf24;
         --radius: 14px;
     }
-  <script>
-(() => {
-  const logoutBtn = document.getElementById('logout-btn');
-
-  if (!logoutBtn) return;
-
-  logoutBtn.addEventListener('click', async () => {
-    logoutBtn.disabled = true;
-    logoutBtn.textContent = 'Déconnexion...';
-
-    try {
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      window.location.replace('/login.html');
-    } catch (error) {
-      console.error('Erreur de déconnexion:', error);
-      logoutBtn.disabled = false;
-      logoutBtn.textContent = '🔒 Déconnexion';
-      alert('Impossible de se déconnecter. Réessaie.');
-    }
-  });
-})();
-</script>
     body {
         font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
         background: var(--bg); color: var(--ink); min-height: 100vh;
@@ -544,18 +513,24 @@
     .debug-log .log-line.info { color: #7af; }
     .debug-log .log-line.warn { color: #fa7; }
 </style>
+
+<style id="auth-guard-style">
+body.auth-checking > :not(#auth-loading){visibility:hidden!important;}
+#auth-loading{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:#09090f;color:#fff;padding:20px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;}
+#auth-loading .auth-loading-card{width:min(420px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.55);}
+#auth-loading .auth-spinner{width:28px;height:28px;margin:0 auto 14px;border:3px solid rgba(139,92,246,.25);border-top-color:#8b5cf6;border-radius:50%;animation:authspin .8s linear infinite;}
+@keyframes authspin{to{transform:rotate(360deg)}}
+</style>
 </head>
-<body>
-<div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
-  <div style="width:min(420px,100%);background:#151b2e;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#fff;">
-    <h1 style="margin:0 0 8px;font-size:26px;">🔒 Cinéma Séquentiel Pro</h1>
-    <p style="margin:0 0 22px;opacity:.75;">Projet personnel — connexion requise</p>
-    <label for="private-password" style="display:block;margin-bottom:8px;font-weight:600;">Mot de passe</label>
-    <input id="private-password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid #3a435f;background:#0e1425;color:#fff;box-sizing:border-box;font-size:16px;">
-    <button id="private-login-btn" type="button" style="width:100%;margin-top:14px;padding:13px;border:0;border-radius:10px;font-weight:700;cursor:pointer;font-size:16px;">Se connecter</button>
-    <div id="private-login-error" style="display:none;margin-top:12px;color:#ff8b8b;">Mot de passe incorrect.</div>
+<body class="auth-checking">
+<div id="auth-loading" aria-live="polite">
+  <div class="auth-loading-card">
+    <div class="auth-spinner"></div>
+    <strong>Vérification de la session…</strong>
+    <div style="margin-top:8px;color:#aaaabd;font-size:.82rem">Connexion sécurisée à Cinéma Séquentiel Pro</div>
   </div>
 </div>
+
 
 <!-- 🔒 API masquée - sécurisée dans Render Environment AGNES_API_KEY -->
 <div class="info-banner" style="border-color:#10b981; background: rgba(16,185,129,0.08);">
@@ -566,6 +541,7 @@
 <header>
     <h1>Cinéma Séquentiel Pro v6</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
+    <button id="logout-btn" type="button" style="margin-top:.8rem;padding:.55rem .9rem;border:1px solid #34343f;border-radius:9px;background:#14141a;color:#aaaabd;font-weight:700;cursor:pointer">🔓 Se déconnecter</button>
 </header>
 
 <div class="info-banner">
@@ -845,6 +821,16 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js" crossorigin="anonymous"></script>
 
+
+<script id="logout-script">
+document.addEventListener('DOMContentLoaded',function(){
+  document.getElementById('logout-btn')?.addEventListener('click',async function(){
+    this.disabled=true;
+    try{ await fetch('/api/auth/logout',{method:'POST',credentials:'include',cache:'no-store'}); }catch(e){}
+    location.replace('/login.html');
+  });
+});
+</script>
 <script>
 // ══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -2127,6 +2113,40 @@ function setupRefImageHandlers(){
 })();
 </script>
 
+
+<script id="auth-guard-script">
+(function(){
+  const loading = document.getElementById('auth-loading');
+  let redirected = false;
+  function logAuth(message,type){
+    if(typeof addLog === 'function') addLog('AUTH: '+message,type||'info');
+  }
+  function showApp(){
+    document.body.classList.remove('auth-checking');
+    if(loading) loading.remove();
+    logAuth('Session valide — application déverrouillée','success');
+  }
+  function goLogin(){
+    if(redirected) return;
+    redirected = true;
+    logAuth('Session absente — redirection vers /login.html','warn');
+    location.replace('/login.html?next=/');
+  }
+  async function check(){
+    try{
+      const r=await fetch('/api/auth/status',{method:'GET',credentials:'include',cache:'no-store',headers:{'Accept':'application/json'}});
+      const data=await r.json().catch(()=>({}));
+      logAuth('/api/auth/status → HTTP '+r.status+' · authenticated='+!!data.authenticated,data.authenticated?'success':'warn');
+      if(r.ok && data.authenticated){ showApp(); } else { goLogin(); }
+    }catch(e){
+      logAuth('Erreur de vérification : '+e.message,'error');
+      goLogin();
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',check,{once:true});
+  else check();
+})();
+</script>
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script>
 <script>
 function getAgnesApiKey(){ return ''; /* clé dans Render AGNES_API_KEY */ }
@@ -2134,67 +2154,6 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
 </script>
 
 
-<script>
-(function () {
-  async function checkStatus() {
-    try {
-      const r = await fetch('/api/auth/status', {credentials:'include'});
-      const data = await r.json();
-      if (typeof addLog === 'function') addLog('/api/auth/status → HTTP ' + r.status + ' · authenticated=' + !!data.authenticated, data.authenticated ? 'success' : 'warn');
-      if (data.authenticated) unlock(); else location.replace('/login.html');
-    } catch (e) {
-      if (typeof addLog === 'function') addLog('Auth status inaccessible : ' + e.message, 'error');
-    }
-  }
-  function unlock() {
-    const gate = document.getElementById('private-login-gate');
-    if (gate) {
-      gate.style.display = 'none';
-      gate.setAttribute('aria-hidden', 'true');
-    }
-    document.body.classList.add('private-authenticated');
-  }
-  async function login() {
-    const input = document.getElementById('private-password');
-    const error = document.getElementById('private-login-error');
-    if (!input) return;
-    error.style.display = 'none';
-    try {
-      const r = await fetch('/api/auth/login', {
-        method:'POST',
-        credentials:'include',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({password:input.value})
-      });
-      const data = await r.json().catch(() => ({}));
-      if (r.ok && data.ok) {
-        input.value = '';
-        if (typeof addLog === 'function') addLog('Authentification réussie côté serveur · session active', 'success');
-        unlock();
-      } else {
-        error.textContent = data.error === 'AUTH_NOT_CONFIGURED'
-          ? 'Le mot de passe serveur n’est pas encore configuré.'
-          : 'Mot de passe incorrect.';
-        error.style.display = 'block';
-        input.value = '';
-        input.focus();
-      }
-    } catch (_) {
-      error.textContent = 'Serveur inaccessible.';
-      error.style.display = 'block';
-    }
-  }
-  function init() {
-    document.getElementById('private-login-btn')?.addEventListener('click', login);
-    document.getElementById('private-password')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') login();
-    });
-    checkStatus();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-})();
-</script>
 
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script></body>
 </html>
