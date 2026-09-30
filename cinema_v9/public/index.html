@@ -563,7 +563,7 @@
         <strong style="color:#10b981">Scène 2</strong> = dernière image de la Scène 1 (extraction auto corrigée)<br>
         <strong style="color:#8b5cf6">Scène 3+</strong> = dernière image de la scène précédente
     </div>
-    <div id="ref-upload-zone" style="border:3px dashed #fbbf24;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;background:#1c1c24;transition:.2s">
+    <label id="ref-upload-zone" for="ref-file-input" style="display:block;border:3px dashed #fbbf24;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;background:#1c1c24;transition:.2s;-webkit-tap-highlight-color:transparent">
         <div id="ref-placeholder" style="font-size:.9rem">
             📁 <strong>Clique ici pour ajouter ton image de référence</strong><br>
             <span style="font-size:.75rem;color:var(--ink-dim)">JPG, PNG, WEBP - Cette image sera le first frame de la Scène 1</span><br>
@@ -572,7 +572,7 @@
         <img id="ref-preview" style="display:none;max-width:100%;max-height:260px;border-radius:12px;margin:1rem auto 0;border:2px solid #fbbf24">
         <div id="ref-info" style="display:none;font-size:.75rem;color:var(--ink-dim);margin-top:.8rem;background:rgba(0,0,0,.3);padding:.5rem;border-radius:8px"></div>
     </div>
-    <input type="file" id="ref-file-input" accept="image/*" style="display:none">
+    <input type="file" id="ref-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
     <div style="display:flex;gap:.6rem;margin-top:.8rem">
         <button type="button" id="ref-clear-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--border);background:var(--panel-3);color:var(--ink);font-size:.8rem;display:none">🗑 Supprimer</button>
         <button type="button" id="ref-preview-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--accent);background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;display:none">👁️ Voir en grand</button>
@@ -2000,7 +2000,12 @@ function setupRefImageHandlers(){
         if(preview.src) window.open(preview.src, '_blank');
     });
 
-    zone.addEventListener('click', ()=> input.click());
+    // Android/Chrome : le label for= ouvre nativement le sélecteur de fichiers.
+    // Fallback JS pour les navigateurs qui ne déclenchent pas correctement le label.
+    zone.addEventListener('click', (e)=>{
+        if (e.target.closest('button')) return;
+        try { input.click(); } catch (_) {}
+    });
     zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.borderColor='#8b5cf6'; zone.style.transform='scale(1.02)'; });
     zone.addEventListener('dragleave', e=>{ zone.style.borderColor='#fbbf24'; zone.style.transform='scale(1)'; });
     zone.addEventListener('drop', e=>{
