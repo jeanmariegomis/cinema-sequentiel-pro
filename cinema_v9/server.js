@@ -132,7 +132,7 @@ function getApiKeyForRequest(req) {
   return process.env.AGNES_API_KEY || AGNES_API_KEY || '';
 }
 
-const MODEL_VIDEO = 'agnes-video-v2.0';
+const MODEL = 'agnes-video-2.5-flash';
 const FRAME_RATE = 24;
 const DATA_DIR = path.join(process.cwd(), 'data');
 const JOBS_FILE = path.join(DATA_DIR, 'jobs.json');
