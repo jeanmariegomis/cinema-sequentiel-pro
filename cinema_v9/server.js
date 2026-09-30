@@ -40,31 +40,44 @@ function requirePrivateAuth(req, res, next) {
   if (validAuthToken(getCookie(req, 'csp_auth'))) return next();
   return res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' });
 }
+
 function setupPrivateAuthRoutes() {
   app.post('/api/auth/login', express.json(), (req, res) => {
-    const password = String(req.body?.password || '');
-    const expectedHash = String(process.env.APP_PASSWORD_SHA256 || '').trim().toLowerCase();
-    const configuredPassword = process.env.APP_PASSWORD ?? '';
-    const suppliedHash = hashPassword(password);
-    if (!process.env.AUTH_SECRET) return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
+    const password = String(req.body?.password ?? '');
 
-    // Accept either a SHA-256 hash or the plain APP_PASSWORD environment variable.
-    // APP_PASSWORD is intended for a private Render service; never hard-code the password here.
-    const hashMatches = expectedHash && /^[0-9a-f]{64}$/.test(expectedHash)
-      ? timingSafeEqualHex(suppliedHash, expectedHash)
-      : false;
-    const plainMatches = configuredPassword !== '' && password === String(configuredPassword);
-    if (!hashMatches && !plainMatches) {
+    // Preferred: compare the normal Render APP_PASSWORD without ever
+    // exposing it to the browser. Fallback: APP_PASSWORD_SHA256.
+    const plainPassword = process.env.APP_PASSWORD ?? '';
+    const expectedHash = process.env.APP_PASSWORD_SHA256 ?? '';
+
+    let valid = false;
+    if (plainPassword !== '') {
+      valid = timingSafeEqualHex(hashPassword(password), hashPassword(plainPassword));
+    } else if (expectedHash !== '') {
+      valid = timingSafeEqualHex(hashPassword(password), expectedHash.trim().toLowerCase());
+    }
+
+    if ((!plainPassword && !expectedHash) || !process.env.AUTH_SECRET) {
+      return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
+    }
+
+    if (!valid) {
       return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
     }
+
     const token = makeAuthToken();
-    res.setHeader('Set-Cookie', `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`);
+    res.setHeader(
+      'Set-Cookie',
+      `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+    );
     return res.json({ ok: true });
   });
+
   app.post('/api/auth/logout', (req, res) => {
     res.setHeader('Set-Cookie', 'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
     res.json({ ok: true });
   });
+
   app.get('/api/auth/status', (req, res) => {
     res.json({ authenticated: validAuthToken(getCookie(req, 'csp_auth')) });
   });
@@ -207,7 +220,6 @@ app.post('/api/jobs/:id/cancel',requirePrivateAuth, (req,res)=>{
 });
 
 app.get(/.*/,(req,res)=>res.sendFile(path.join(process.cwd(),'public','index.html')));
-
 app.listen(PORT,()=>console.log(`Cinema V9 listening on :${PORT}`));
 setInterval(processJobs,3000);
 processJobs();
