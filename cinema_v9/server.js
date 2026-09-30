@@ -42,36 +42,71 @@ function requirePrivateAuth(req, res, next) {
 }
 
 function setupPrivateAuthRoutes() {
-  app.post('/api/auth/login', express.json(), (req, res) => {
-    const password = String(req.body?.password ?? '');
+app.post('/api/auth/login', express.json(), (req, res) => {
+  const password = String(req.body?.password ?? '');
 
-    // Preferred: compare the normal Render APP_PASSWORD without ever
-    // exposing it to the browser. Fallback: APP_PASSWORD_SHA256.
-    const plainPassword = process.env.APP_PASSWORD ?? '';
-    const expectedHash = process.env.APP_PASSWORD_SHA256 ?? '';
+  const plainPassword = process.env.APP_PASSWORD ?? '';
+  const expectedHash = process.env.APP_PASSWORD_SHA256 ?? '';
+  const authSecretConfigured = Boolean(process.env.AUTH_SECRET);
 
-    let valid = false;
-    if (plainPassword !== '') {
-      valid = timingSafeEqualHex(hashPassword(password), hashPassword(plainPassword));
-    } else if (expectedHash !== '') {
-      valid = timingSafeEqualHex(hashPassword(password), expectedHash.trim().toLowerCase());
-    }
+  // ===== AUTH DEBUG — aucun mot de passe n'est affiché =====
+  console.log('===== AUTH DEBUG =====');
+  console.log('Password received:', password.length > 0);
+  console.log('Password length:', password.length);
+  console.log('APP_PASSWORD configured:', plainPassword.length > 0);
+  console.log('APP_PASSWORD length:', plainPassword.length);
+  console.log('APP_PASSWORD_SHA256 configured:', expectedHash.length > 0);
+  console.log('APP_PASSWORD_SHA256 length:', expectedHash.length);
+  console.log('AUTH_SECRET configured:', authSecretConfigured);
 
-    if ((!plainPassword && !expectedHash) || !process.env.AUTH_SECRET) {
-      return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
-    }
+  let valid = false;
 
-    if (!valid) {
-      return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
-    }
-
-    const token = makeAuthToken();
-    res.setHeader(
-      'Set-Cookie',
-      `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+  if (plainPassword !== '') {
+    valid = timingSafeEqualHex(
+      hashPassword(password),
+      hashPassword(plainPassword)
     );
-    return res.json({ ok: true });
-  });
+
+    console.log('Authentication method: APP_PASSWORD');
+  } else if (expectedHash !== '') {
+    valid = timingSafeEqualHex(
+      hashPassword(password),
+      expectedHash.trim().toLowerCase()
+    );
+
+    console.log('Authentication method: APP_PASSWORD_SHA256');
+  } else {
+    console.log('Authentication method: NONE');
+  }
+
+  console.log('Password comparison result:', valid);
+  console.log('======================');
+
+  if ((!plainPassword && !expectedHash) || !authSecretConfigured) {
+    return res.status(503).json({
+      ok: false,
+      error: 'AUTH_NOT_CONFIGURED'
+    });
+  }
+
+  if (!valid) {
+    return res.status(401).json({
+      ok: false,
+      error: 'INVALID_PASSWORD'
+    });
+  }
+
+  const token = makeAuthToken();
+
+  res.setHeader(
+    'Set-Cookie',
+    `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`
+  );
+
+  console.log('Authentication successful');
+
+  return res.json({ ok: true });
+});
 
   app.post('/api/auth/logout', (req, res) => {
     res.setHeader('Set-Cookie', 'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
