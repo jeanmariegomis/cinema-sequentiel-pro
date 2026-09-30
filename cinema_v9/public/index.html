@@ -69,6 +69,9 @@
         background-attachment: fixed;
     }
     header { margin-bottom: 1.8rem; text-align: center; position: relative; }
+    .logout-btn { position:absolute; top:0; right:0; border:1px solid var(--border-light); background:var(--panel-2); color:var(--ink); border-radius:10px; padding:.55rem .75rem; font-size:.78rem; font-weight:700; cursor:pointer; }
+    .logout-btn:active { transform:scale(.98); }
+    @media (max-width:600px){ .logout-btn{position:static;margin:0 auto .8rem;display:block;} }
     h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.4rem;
          background: linear-gradient(120deg, #8b5cf6, #ec4899, #6366f1);
          -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -513,23 +516,9 @@
     .debug-log .log-line.info { color: #7af; }
     .debug-log .log-line.warn { color: #fa7; }
 </style>
-
-<style id="auth-guard-style">
-body.auth-checking > :not(#auth-loading){visibility:hidden!important;}
-#auth-loading{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:#09090f;color:#fff;padding:20px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;}
-#auth-loading .auth-loading-card{width:min(420px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.55);}
-#auth-loading .auth-spinner{width:28px;height:28px;margin:0 auto 14px;border:3px solid rgba(139,92,246,.25);border-top-color:#8b5cf6;border-radius:50%;animation:authspin .8s linear infinite;}
-@keyframes authspin{to{transform:rotate(360deg)}}
-</style>
 </head>
-<body class="auth-checking">
-<div id="auth-loading" aria-live="polite">
-  <div class="auth-loading-card">
-    <div class="auth-spinner"></div>
-    <strong>Vérification de la session…</strong>
-    <div style="margin-top:8px;color:#aaaabd;font-size:.82rem">Connexion sécurisée à Cinéma Séquentiel Pro</div>
-  </div>
-</div>
+<body>
+
 
 
 <!-- 🔒 API masquée - sécurisée dans Render Environment AGNES_API_KEY -->
@@ -539,9 +528,9 @@ body.auth-checking > :not(#auth-loading){visibility:hidden!important;}
 
 
 <header>
+    <button id="logout-btn" class="logout-btn" type="button">🔓 Déconnexion</button>
     <h1>Cinéma Séquentiel Pro v6</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
-    <button id="logout-btn" type="button" style="margin-top:.8rem;padding:.55rem .9rem;border:1px solid #34343f;border-radius:9px;background:#14141a;color:#aaaabd;font-weight:700;cursor:pointer">🔓 Se déconnecter</button>
 </header>
 
 <div class="info-banner">
@@ -821,16 +810,6 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js" crossorigin="anonymous"></script>
 
-
-<script id="logout-script">
-document.addEventListener('DOMContentLoaded',function(){
-  document.getElementById('logout-btn')?.addEventListener('click',async function(){
-    this.disabled=true;
-    try{ await fetch('/api/auth/logout',{method:'POST',credentials:'include',cache:'no-store'}); }catch(e){}
-    location.replace('/login.html');
-  });
-});
-</script>
 <script>
 // ══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -1146,10 +1125,10 @@ function updateGenerateBtn() {
     btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
+    } else if (!hasKey) {
+        btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
         btn.textContent = '✂️ Découpez d\'abord votre scénario';
-    } else if (!hasReference) {
-        btn.textContent = '🖼️ Ajoutez l\'image de référence';
     } else {
         const durSec = (state.durationFrames / FRAME_RATE).toFixed(1);
         btn.textContent = '🎬 Générer le plan séquence — ' + state.scenes.length + ' scènes × ' + durSec + 's';
@@ -2113,40 +2092,6 @@ function setupRefImageHandlers(){
 })();
 </script>
 
-
-<script id="auth-guard-script">
-(function(){
-  const loading = document.getElementById('auth-loading');
-  let redirected = false;
-  function logAuth(message,type){
-    if(typeof addLog === 'function') addLog('AUTH: '+message,type||'info');
-  }
-  function showApp(){
-    document.body.classList.remove('auth-checking');
-    if(loading) loading.remove();
-    logAuth('Session valide — application déverrouillée','success');
-  }
-  function goLogin(){
-    if(redirected) return;
-    redirected = true;
-    logAuth('Session absente — redirection vers /login.html','warn');
-    location.replace('/login.html?next=/');
-  }
-  async function check(){
-    try{
-      const r=await fetch('/api/auth/status',{method:'GET',credentials:'include',cache:'no-store',headers:{'Accept':'application/json'}});
-      const data=await r.json().catch(()=>({}));
-      logAuth('/api/auth/status → HTTP '+r.status+' · authenticated='+!!data.authenticated,data.authenticated?'success':'warn');
-      if(r.ok && data.authenticated){ showApp(); } else { goLogin(); }
-    }catch(e){
-      logAuth('Erreur de vérification : '+e.message,'error');
-      goLogin();
-    }
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',check,{once:true});
-  else check();
-})();
-</script>
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script>
 <script>
 function getAgnesApiKey(){ return ''; /* clé dans Render AGNES_API_KEY */ }
@@ -2155,5 +2100,36 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
 
 
 
-<script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script></body>
+
+<script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script>
+<script>
+(function(){
+  function authLog(message,type){
+    try {
+      if (typeof addLog === 'function') addLog(message,type||'info');
+    } catch (_) {}
+  }
+  async function logout(){
+    const btn=document.getElementById('logout-btn');
+    if(btn){btn.disabled=true;btn.textContent='Déconnexion…';}
+    authLog('Déconnexion demandée…','warn');
+    try{
+      const r=await fetch('/api/auth/logout',{method:'POST',credentials:'include',cache:'no-store'});
+      authLog('POST /api/auth/logout → HTTP '+r.status,r.ok?'success':'error');
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      window.location.replace('/login.html');
+    }catch(e){
+      authLog('Erreur de déconnexion : '+(e&&e.message?e.message:String(e)),'error');
+      if(btn){btn.disabled=false;btn.textContent='🔓 Déconnexion';}
+      alert('Impossible de se déconnecter. Réessaie.');
+    }
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    const btn=document.getElementById('logout-btn');
+    if(btn) btn.addEventListener('click',logout);
+    authLog('Application chargée : session déjà validée par le serveur.','success');
+  });
+})();
+</script>
+</body>
 </html>
