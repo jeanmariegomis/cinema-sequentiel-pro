@@ -268,4 +268,290 @@ button:disabled{opacity:.6}
         data.authenticated ? 'ok' : 'info'
       );
 
-      if (data
+      if (data.authConfigured !== undefined) {
+
+        log(
+          `authConfigured = ${Boolean(data.authConfigured)}`,
+          data.authConfigured ? 'ok' : 'warn'
+        );
+
+      }
+
+      if (data.authenticated) {
+
+        status('Déjà connecté');
+
+        log(
+          'Session valide → redirection vers l’application',
+          'ok'
+        );
+
+        location.replace('/');
+
+        return;
+      }
+
+      status('Non connecté');
+
+      log('Aucune session valide');
+
+    } catch (err) {
+
+      status('Erreur réseau');
+
+      log(
+        `Erreur status : ${err.message}`,
+        'error'
+      );
+
+    }
+  }
+
+  /*
+   * Connexion
+   */
+  form.addEventListener('submit', async (event) => {
+
+    event.preventDefault();
+
+    error.textContent = '';
+
+    const password = input.value;
+
+    if (!password) {
+
+      log(
+        'Aucun mot de passe saisi',
+        'warn'
+      );
+
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Connexion...';
+
+    status('Connexion en cours');
+
+    log('Tentative de connexion...');
+    log('Mot de passe reçu côté navigateur : OUI');
+    log('Valeur du mot de passe : MASQUÉE');
+
+    try {
+
+      const response = await fetch(
+        '/api/auth/login',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+            'Accept':
+              'application/json'
+          },
+
+          credentials: 'same-origin',
+
+          body: JSON.stringify({
+            password
+          })
+        }
+      );
+
+      log(
+        `POST /api/auth/login → HTTP ${response.status}`,
+        response.ok ? 'ok' : 'error'
+      );
+
+      const text = await response.text();
+
+      log(
+        `Réponse login reçue (${text.length} caractères)`
+      );
+
+      let data = {};
+
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+
+        log(
+          'Réponse login non JSON',
+          'warn'
+        );
+
+      }
+
+      if (!response.ok) {
+
+        const serverError =
+          data.error ||
+          `HTTP ${response.status}`;
+
+        log(
+          `Authentification refusée : ${serverError}`,
+          'error'
+        );
+
+        if (serverError === 'INVALID_PASSWORD') {
+          error.textContent =
+            'Mot de passe incorrect.';
+        }
+        else if (
+          serverError === 'AUTH_NOT_CONFIGURED'
+        ) {
+          error.textContent =
+            'Authentification non configurée sur Render.';
+        }
+        else {
+          error.textContent =
+            `Erreur : ${serverError}`;
+        }
+
+        status('Échec');
+
+        return;
+      }
+
+      log(
+        'Réponse de connexion positive',
+        'ok'
+      );
+
+      status('Connexion acceptée');
+
+      /*
+       * Vérification immédiate de la session.
+       */
+      log(
+        'Vérification du cookie/session...'
+      );
+
+      const statusResponse =
+        await fetch(
+          '/api/auth/status',
+          {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store'
+          }
+        );
+
+      log(
+        `/api/auth/status après login → HTTP ${statusResponse.status}`
+      );
+
+      const statusText =
+        await statusResponse.text();
+
+      let statusData = {};
+
+      try {
+        statusData =
+          statusText
+            ? JSON.parse(statusText)
+            : {};
+      } catch {}
+
+      log(
+        `Session après login : authenticated = ${Boolean(statusData.authenticated)}`,
+        statusData.authenticated
+          ? 'ok'
+          : 'error'
+      );
+
+      if (statusData.authenticated) {
+
+        status('Connecté');
+
+        log(
+          'SESSION VALIDÉE → ouverture de l’application',
+          'ok'
+        );
+
+        location.replace('/');
+
+        return;
+      }
+
+      /*
+       * Ici se trouve précisément le problème
+       * si le serveur accepte le login mais
+       * que le cookie n'est pas conservé.
+       */
+      status('Session non reconnue');
+
+      error.textContent =
+        'Connexion acceptée mais session non reconnue.';
+
+      log(
+        '⚠️ Le serveur a accepté la connexion mais /api/auth/status ne reconnaît pas la session.',
+        'error'
+      );
+
+    } catch (err) {
+
+      status('Erreur réseau');
+
+      log(
+        `Erreur pendant la connexion : ${err.message}`,
+        'error'
+      );
+
+      error.textContent =
+        'Impossible de contacter le serveur.';
+
+    }
+    finally {
+
+      button.disabled = false;
+      button.textContent =
+        '🔓 Se connecter';
+
+    }
+
+  });
+
+  /*
+   * Affichage des erreurs déjà présentes
+   * dans l'URL.
+   */
+  const params =
+    new URLSearchParams(
+      location.search
+    );
+
+  const code =
+    params.get('error');
+
+  if (code === 'AUTH_NOT_CONFIGURED') {
+
+    error.textContent =
+      'Authentification non configurée sur Render.';
+
+    log(
+      'Erreur reçue : AUTH_NOT_CONFIGURED',
+      'error'
+    );
+
+  }
+  else if (code === 'INVALID_PASSWORD') {
+
+    error.textContent =
+      'Mot de passe incorrect.';
+
+    log(
+      'Erreur reçue : INVALID_PASSWORD',
+      'error'
+    );
+
+  }
+
+  checkAuthStatus();
+
+})();
+</script>
+
+</body>
+</html>
