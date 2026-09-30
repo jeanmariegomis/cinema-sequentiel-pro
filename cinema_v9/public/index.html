@@ -48,6 +48,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Cinéma Séquentiel Pro v8.2 — Anime 3D + Référence + Chaînage</title>
 <style>
+  <button id="logout-btn" type="button">🔒 Déconnexion</button>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
         --bg: #0a0a0c; --panel: #14141a; --panel-2: #1c1c24; --panel-3: #24242e;
@@ -58,6 +59,36 @@
         --gold: #fbbf24;
         --radius: 14px;
     }
+  <script>
+(() => {
+  const logoutBtn = document.getElementById('logout-btn');
+
+  if (!logoutBtn) return;
+
+  logoutBtn.addEventListener('click', async () => {
+    logoutBtn.disabled = true;
+    logoutBtn.textContent = 'Déconnexion...';
+
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      window.location.replace('/login.html');
+    } catch (error) {
+      console.error('Erreur de déconnexion:', error);
+      logoutBtn.disabled = false;
+      logoutBtn.textContent = '🔒 Déconnexion';
+      alert('Impossible de se déconnecter. Réessaie.');
+    }
+  });
+})();
+</script>
     body {
         font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
         background: var(--bg); color: var(--ink); min-height: 100vh;
