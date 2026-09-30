@@ -2,6 +2,9 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 
 const PORT = process.env.PORT || 10000;
 const API_BASE = process.env.AGNES_API_BASE || 'https://api.agnes.com';
@@ -97,6 +100,63 @@ function safeJob(job){
 }
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+const execFileAsync = promisify(execFile);
+
+async function extractLastFrameDataUrl(videoUrl) {
+  const tempDir = path.join(DATA_DIR, 'tmp');
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  const id = crypto.randomUUID();
+  const inputPath = path.join(tempDir, `${id}.mp4`);
+  const outputPath = path.join(tempDir, `${id}.jpg`);
+
+  try {
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Téléchargement vidéo HTTP ${response.status}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) throw new Error('Vidéo vide');
+
+    fs.writeFileSync(inputPath, buffer);
+
+    // Extract a frame very close to the end of the generated clip.
+    // -sseof seeks from the end, so this works without knowing the duration.
+    try {
+      await execFileAsync(ffmpegPath.path, [
+        '-y',
+        '-sseof', '-0.20',
+        '-i', inputPath,
+        '-frames:v', '1',
+        '-q:v', '2',
+        outputPath
+      ]);
+    } catch (_) {
+      // Fallback for very short clips where -0.20s is outside the valid range.
+      await execFileAsync(ffmpegPath.path, [
+        '-y',
+        '-sseof', '-1',
+        '-i', inputPath,
+        '-frames:v', '1',
+        '-q:v', '2',
+        outputPath
+      ]);
+    }
+
+    if (!fs.existsSync(outputPath)) {
+      throw new Error('FFmpeg n’a pas produit la dernière frame');
+    }
+
+    const jpg = fs.readFileSync(outputPath);
+    return 'data:image/jpeg;base64,' + jpg.toString('base64');
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch (_) {}
+    try { fs.unlinkSync(outputPath); } catch (_) {}
+  }
+}
+
+
 async function createVideoTask(scene, req){
   const apiKeyToUse = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
   const body = { model: MODEL_VIDEO, prompt: scene.prompt, num_frames: scene.frames, frame_rate: FRAME_RATE };
@@ -148,20 +208,76 @@ async function processJobs(){
   workerBusy = true;
   try{
     job.status='processing'; job.updatedAt=Date.now(); saveJobs(jobs);
-    for(const scene of job.scenes){
+    for(let sceneIndex = 0; sceneIndex < job.scenes.length; sceneIndex++){
+      const scene = job.scenes[sceneIndex];
       if(scene.status==='done') continue;
+
+      // Permanent sequential continuity:
+      // Scene 1 uses the user's master reference.
+      // Every following scene uses the last frame extracted from the
+      // previously generated scene.
+      if(sceneIndex > 0){
+        const previousScene = job.scenes[sceneIndex - 1];
+        if(!previousScene.videoUrl){
+          scene.status='failed';
+          scene.error='Impossible de continuer : la scène précédente n’a pas d’URL vidéo.';
+          job.status='failed';
+          job.updatedAt=Date.now();
+          saveJobs(jobs);
+          break;
+        }
+
+        try{
+          scene.image = await extractLastFrameDataUrl(previousScene.videoUrl);
+          scene.referenceSource = 'last-frame-of-previous-scene';
+          job.updatedAt=Date.now();
+          saveJobs(jobs);
+        }catch(e){
+          scene.status='failed';
+          scene.error='Extraction dernière frame : ' + e.message;
+          job.status='failed';
+          job.updatedAt=Date.now();
+          saveJobs(jobs);
+          break;
+        }
+      }
+
       scene.status='processing'; job.updatedAt=Date.now(); saveJobs(jobs);
+
       try{
         const videoId = await createVideoTask(scene, { get:()=>'' });
-        scene.videoId = videoId; job.updatedAt=Date.now(); saveJobs(jobs);
+        scene.videoId = videoId;
+        job.updatedAt=Date.now();
+        saveJobs(jobs);
+
         scene.videoUrl = await pollVideo(videoId, { get:()=>'' });
-        scene.status='done'; scene.error=null;
+        scene.status='done';
+        scene.error=null;
+
+        // Extract now so the next scene can start directly from this
+        // exact final visual state.
+        if(sceneIndex < job.scenes.length - 1){
+          try{
+            scene.lastFrame = await extractLastFrameDataUrl(scene.videoUrl);
+            job.scenes[sceneIndex + 1].image = scene.lastFrame;
+            job.scenes[sceneIndex + 1].referenceSource = 'last-frame-of-previous-scene';
+          }catch(e){
+            scene.status='failed';
+            scene.error='Extraction dernière frame : ' + e.message;
+            job.status='failed';
+            job.updatedAt=Date.now();
+            saveJobs(jobs);
+            break;
+          }
+        }
       }catch(e){
         scene.status='failed'; scene.error=e.message;
         job.status='failed'; job.updatedAt=Date.now(); saveJobs(jobs);
         break;
       }
-      job.updatedAt=Date.now(); saveJobs(jobs);
+
+      job.updatedAt=Date.now();
+      saveJobs(jobs);
     }
     if(job.scenes.every(s=>s.status==='done')) job.status='completed';
     else if(job.status!=='failed') job.status='queued';
