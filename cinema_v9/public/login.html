@@ -467,17 +467,20 @@ CONSOLE AUTH — TEST OK
 
       if (statusData.authenticated) {
 
-        status('Connecté');
+  status('CONNECTÉ — TEST');
 
-        log(
-          'SESSION VALIDÉE → ouverture de l’application',
-          'ok'
-        );
+  log(
+    '✅ SESSION VALIDÉE',
+    'ok'
+  );
 
-        location.replace('/');
+  log(
+    '🛑 REDIRECTION BLOQUÉE POUR LE DEBUG',
+    'warn'
+  );
 
-        return;
-      }
+  return;
+}
 
       /*
        * Ici se trouve précisément le problème
