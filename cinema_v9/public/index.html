@@ -21,7 +21,6 @@
 :where(code, pre, kbd, samp) {
   font-family: "Optimistic Mono", ui-monospace, monospace;
 }
-
 </style><style>
 @font-face {
   font-family: "Optimistic";
@@ -515,7 +514,6 @@
 </style>
 </head>
 <body>
-
 
 <div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
   <div style="width:min(420px,100%);background:#151b2e;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#fff;">
@@ -1133,8 +1131,8 @@ function updateGenerateBtn() {
     const btn = document.getElementById('generate-btn');
     if (!btn) return;
     const hasScenes = state.scenes.length > 0;
-    const hasReference = !!state.initialRefDataUrl;
-    btn.disabled = !hasScenes || !hasReference || state.isRunning;
+    const hasKey = !!getApiKey();
+    btn.disabled = !hasScenes || !hasKey || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
     } else if (!hasKey) {
@@ -1866,11 +1864,11 @@ async function startGeneration() {
     try {
         addLog('════ ENVOI AU SERVEUR V9.3 ════', 'info');
         addLog('Le serveur prend maintenant le relais : tu peux fermer Chrome après le lancement.', 'success');
-        const res = await fetch('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(payload) });
+        const res = await fetch('/api/jobs, {headers: agnesHeaders(), method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Impossible de créer la tâche serveur');
         const jobId = data.id;
-        localStorage.setItem('cinema_v11_job_id', jobId);
+        localStorage.setItem('cinema_v9_job_id', jobId);
         addLog('☁️ Job serveur créé : ' + jobId, 'success');
         showToast('🚀 Génération lancée côté serveur. Tu peux fermer Chrome.', 'success', 7000);
         await monitorServerJob(jobId);
@@ -1907,11 +1905,11 @@ async function monitorServerJob(jobId) {
         if (job.status === 'completed') {
             addLog('🎬 Job terminé côté serveur — toutes les scènes sont disponibles.', 'success');
             showToast('🎬 Toutes les scènes sont prêtes.', 'success', 6000);
-            localStorage.removeItem('cinema_v11_job_id');
+            localStorage.removeItem('cinema_v9_job_id');
             return;
         }
         if (job.status === 'failed' || job.status === 'cancelled') {
-            localStorage.removeItem('cinema_v11_job_id');
+            localStorage.removeItem('cinema_v9_job_id');
             throw new Error('Job '+job.status);
         }
         setStatus('☁️ Génération côté serveur — '+(job.completed||0)+'/'+(job.total||state.scenes.length)+' scène(s) terminée(s)');
@@ -1920,7 +1918,7 @@ async function monitorServerJob(jobId) {
 }
 
 async function resumeServerJobIfAny() {
-    const jobId = localStorage.getItem('cinema_v11_job_id');
+    const jobId = localStorage.getItem('cinema_v9_job_id');
     if (!jobId) return;
     try {
         addLog('☁️ Reprise automatique du job serveur '+jobId, 'info');
@@ -2109,7 +2107,6 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
     const gate = document.getElementById('private-login-gate');
     if (gate) gate.style.display = 'none';
     document.body.classList.add('private-authenticated');
-    if (typeof updateGenerateBtn === 'function') updateGenerateBtn();
   }
   async function login() {
     const input = document.getElementById('private-password');
