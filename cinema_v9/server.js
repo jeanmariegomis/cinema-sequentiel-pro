@@ -46,10 +46,17 @@ function requirePrivateAuth(req, res, next) {
 function setupPrivateAuthRoutes() {
   app.post('/api/auth/login', express.json(), (req, res) => {
     const password = String(req.body?.password || '');
-    const expectedHash = process.env.APP_PASSWORD_SHA256 || '';
+    const expectedHash = String(process.env.APP_PASSWORD_SHA256 || '').trim().toLowerCase();
+    const configuredPlainPassword = process.env.APP_PASSWORD || '';
     const suppliedHash = hashPassword(password);
-    if (!expectedHash || !process.env.AUTH_SECRET) return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
-    if (!timingSafeEqualHex(suppliedHash, expectedHash)) return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
+    const plainPasswordMatches = configuredPlainPassword !== '' && password === configuredPlainPassword;
+    const hashMatches = expectedHash !== '' && timingSafeEqualHex(suppliedHash, expectedHash);
+    if ((!expectedHash && !configuredPlainPassword) || !process.env.AUTH_SECRET) {
+      return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
+    }
+    if (!plainPasswordMatches && !hashMatches) {
+      return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
+    }
     const token = makeAuthToken();
     res.setHeader('Set-Cookie', `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`);
     return res.json({ ok: true });
