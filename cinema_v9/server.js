@@ -6,6 +6,7 @@ import crypto from 'crypto';
 const PORT = process.env.PORT || 10000;
 const API_BASE = process.env.AGNES_API_BASE || 'https://apihub.agnes-ai.com/v1';
 const app = express();
+app.set('trust proxy', 1);
 
 // ===== V9.3 PRIVATE SERVER AUTH =====
 function hashPassword(value) {
@@ -42,7 +43,7 @@ function requirePrivateAuth(req, res, next) {
 }
 
 function setupPrivateAuthRoutes() {
-app.post('/api/auth/login', express.json(), (req, res) => {
+app.post('/api/auth/login', express.json(), express.urlencoded({ extended: false }), (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const password = String(req.body?.password ?? '');
 
@@ -84,17 +85,17 @@ app.post('/api/auth/login', express.json(), (req, res) => {
   console.log('======================');
 
   if ((!plainPassword && !expectedHash) || !authSecretConfigured) {
-    return res.status(503).json({
-      ok: false,
-      error: 'AUTH_NOT_CONFIGURED'
-    });
+    if (req.is('application/x-www-form-urlencoded')) {
+      return res.redirect(303, '/login.html?error=AUTH_NOT_CONFIGURED');
+    }
+    return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
   }
 
   if (!valid) {
-    return res.status(401).json({
-      ok: false,
-      error: 'INVALID_PASSWORD'
-    });
+    if (req.is('application/x-www-form-urlencoded')) {
+      return res.redirect(303, '/login.html?error=INVALID_PASSWORD');
+    }
+    return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
   }
 
   const token = makeAuthToken();
@@ -106,6 +107,9 @@ app.post('/api/auth/login', express.json(), (req, res) => {
 
   console.log('Authentication successful');
 
+  if (req.is('application/x-www-form-urlencoded')) {
+    return res.redirect(303, '/');
+  }
   return res.json({ ok: true });
 });
 
