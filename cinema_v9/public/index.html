@@ -22,14 +22,6 @@
   font-family: "Optimistic Mono", ui-monospace, monospace;
 }
 
-    #auth-gate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:1.2rem;background:rgba(7,7,12,.97);backdrop-filter:blur(12px)}
-    #auth-gate.hidden{display:none}
-    .auth-card{width:min(430px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,.55);color:#fff}
-    .auth-card h2{margin:0 0 .5rem;font-size:1.35rem}.auth-card p{margin:.35rem 0 1.1rem;color:#aaaabd;font-size:.88rem;line-height:1.45}
-    #auth-password{width:100%;box-sizing:border-box;padding:1rem;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:1rem;margin:.35rem 0 .75rem}
-    #auth-login-btn{width:100%;padding:1rem;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:1rem}
-    #auth-error{min-height:1.2em;color:#ff6b6b;font-size:.82rem;margin-top:.7rem}
-    body.auth-locked> :not(#auth-gate){visibility:hidden}
 </style><style>
 @font-face {
   font-family: "Optimistic";
@@ -522,21 +514,7 @@
     .debug-log .log-line.warn { color: #fa7; }
 </style>
 </head>
-<body class="auth-locked">
-<div id="auth-gate">
-  <div class="auth-card">
-    <div style="font-size:2rem;margin-bottom:.4rem">🔐</div>
-    <h2>Connexion privée</h2>
-    <p>Connecte-toi pour accéder à <strong>Cinéma Séquentiel Pro</strong>.</p>
-    <form id="auth-form">
-      <input id="auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
-      <button id="auth-login-btn" type="submit">🔓 Se connecter</button>
-      <div id="auth-error"></div>
-    </form>
-  </div>
-</div>
-
-
+<body>
 <div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
   <div style="width:min(420px,100%);background:#151b2e;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#fff;">
     <h1 style="margin:0 0 8px;font-size:26px;">🔒 Cinéma Séquentiel Pro</h1>
@@ -1151,10 +1129,10 @@ function updateGenerateBtn() {
     btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
-    } else if (!hasKey) {
-        btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
         btn.textContent = '✂️ Découpez d\'abord votre scénario';
+    } else if (!hasReference) {
+        btn.textContent = '🖼️ Ajoutez l\'image de référence';
     } else {
         const durSec = (state.durationFrames / FRAME_RATE).toFixed(1);
         btn.textContent = '🎬 Générer le plan séquence — ' + state.scenes.length + ' scènes × ' + durSec + 's';
@@ -2131,12 +2109,18 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
     try {
       const r = await fetch('/api/auth/status', {credentials:'include'});
       const data = await r.json();
+      if (typeof addLog === 'function') addLog('/api/auth/status → HTTP ' + r.status + ' · authenticated=' + !!data.authenticated, data.authenticated ? 'success' : 'warn');
       if (data.authenticated) unlock(); else location.replace('/login.html');
-    } catch (_) {}
+    } catch (e) {
+      if (typeof addLog === 'function') addLog('Auth status inaccessible : ' + e.message, 'error');
+    }
   }
   function unlock() {
     const gate = document.getElementById('private-login-gate');
-    if (gate) gate.style.display = 'none';
+    if (gate) {
+      gate.style.display = 'none';
+      gate.setAttribute('aria-hidden', 'true');
+    }
     document.body.classList.add('private-authenticated');
   }
   async function login() {
@@ -2154,6 +2138,7 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.ok) {
         input.value = '';
+        if (typeof addLog === 'function') addLog('Authentification réussie côté serveur · session active', 'success');
         unlock();
       } else {
         error.textContent = data.error === 'AUTH_NOT_CONFIGURED'
