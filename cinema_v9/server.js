@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 const PORT = process.env.PORT || 10000;
-const API_BASE = process.env.AGNES_API_BASE || 'https://api.agnes.com';
+const API_BASE = process.env.AGNES_API_BASE || 'https://apihub.agnes-ai.com/v1';
 const app = express();
 
 // ===== V9.3 PRIVATE SERVER AUTH =====
@@ -197,7 +197,12 @@ async function createVideoTask(scene, req) {
   const body = {
     model: MODEL,
     prompt,
-    mode: scene.mode || 'text',
+    mode:
+  scene.mode ||
+  (scene.first_frame && scene.last_frame ? 'keyframe' :
+   scene.first_frame ? 'img2video' :
+   Array.isArray(scene.images) && scene.images.length > 0 ? 'reference' :
+   'text'),
     seconds: String(scene.seconds || 8),
     size: scene.size || '720P',
     aspect_ratio: scene.aspect_ratio || '9:16',
@@ -334,7 +339,8 @@ async function pollVideo(videoId, req) {
         data.video_url ||
         data.output?.url ||
         data.output?.video_url ||
-        data.data?.url;
+        data.data?.url ||
+        data.metadata?.url;
 
       if (!url) {
         throw new Error(
