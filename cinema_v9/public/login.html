@@ -24,11 +24,11 @@
 <script>
 (async()=>{
   const form=document.getElementById('login-form'), input=document.getElementById('password'), btn=document.getElementById('login'), err=document.getElementById('error');
-  try{const r=await fetch('/api/auth/status',{credentials:'include'});const d=await r.json();if(d.authenticated)location.replace('/');}catch(e){}
+  try{const r=await fetch('/api/auth/status',{credentials:'include',cache:'no-store'});const d=await r.json();if(d.authenticated)location.replace('/');}catch(e){}
   form.addEventListener('submit',async e=>{
     e.preventDefault(); err.textContent=''; btn.disabled=true; btn.textContent='Connexionâ€¦';
     try{
-      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
+      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
       const d=await r.json().catch(()=>({}));
       if(r.ok&&d.ok){location.replace('/');return;}
       err.textContent=d.error==='AUTH_NOT_CONFIGURED'?'Authentification non configurÃ©e sur Render.':'Mot de passe incorrect.';
