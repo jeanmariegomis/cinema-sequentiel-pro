@@ -13,7 +13,7 @@
   <div class="logo">ðŸ”</div>
   <div class="title">Connexion privÃ©e</div>
   <div class="sub">Connectez-vous pour accÃ©der Ã  <strong>CinÃ©ma SÃ©quentiel Pro</strong>.</div>
-  <form id="login-form">
+  <form id="login-form" action="/api/auth/login" method="post">
     <label class="label" for="password">Mot de passe</label>
     <input id="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" required autofocus>
     <button id="login" type="submit">ðŸ”“ Se connecter</button>
@@ -22,20 +22,13 @@
   <div class="note">AccÃ¨s protÃ©gÃ© par le serveur Render</div>
 </main>
 <script>
-(async()=>{
-  const form=document.getElementById('login-form'), input=document.getElementById('password'), btn=document.getElementById('login'), err=document.getElementById('error');
-  try{const r=await fetch('/api/auth/status',{credentials:'include',cache:'no-store'});const d=await r.json();if(d.authenticated)location.replace('/');}catch(e){}
-  form.addEventListener('submit',async e=>{
-    e.preventDefault(); err.textContent=''; btn.disabled=true; btn.textContent='Connexionâ€¦';
-    try{
-      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
-      const d=await r.json().catch(()=>({}));
-      if(r.ok&&d.ok){location.replace('/');return;}
-      err.textContent=d.error==='AUTH_NOT_CONFIGURED'?'Authentification non configurÃ©e sur Render.':'Mot de passe incorrect.';
-      input.value=''; input.focus();
-    }catch(e){err.textContent='Serveur inaccessible.';}
-    finally{btn.disabled=false;btn.textContent='ðŸ”“ Se connecter';}
-  });
+(() => {
+  const params = new URLSearchParams(location.search);
+  const error = document.getElementById('error');
+  const input = document.getElementById('password');
+  const code = params.get('error');
+  if (code === 'AUTH_NOT_CONFIGURED') error.textContent = 'Authentification non configurée sur Render.';
+  else if (code === 'INVALID_PASSWORD') error.textContent = 'Mot de passe incorrect.';
 })();
 </script>
 </body>
