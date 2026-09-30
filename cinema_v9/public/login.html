@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Connexion â€” CinÃ©ma SÃ©quentiel Pro</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#09090f;color:#fff}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at top,#201536 0,#09090f 55%)}.card{width:min(430px,94vw);background:#17171f;border:1px solid #343445;border-radius:22px;padding:26px;box-shadow:0 22px 70px rgba(0,0,0,.55)}.logo{font-size:38px;margin-bottom:8px}.title{font-size:25px;font-weight:800;margin-bottom:7px}.sub{color:#a9a9b8;line-height:1.45;margin-bottom:22px}.label{display:block;font-size:14px;font-weight:700;margin-bottom:8px}input{width:100%;padding:14px;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:16px;outline:none}input:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.15)}button{width:100%;padding:14px;margin-top:14px;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:16px;cursor:pointer}button:disabled{opacity:.6}.error{min-height:22px;margin-top:12px;color:#ff7777;font-size:14px}.note{margin-top:18px;color:#77778a;font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="logo">ðŸ”</div>
+  <div class="title">Connexion privÃ©e</div>
+  <div class="sub">Connectez-vous pour accÃ©der Ã  <strong>CinÃ©ma SÃ©quentiel Pro</strong>.</div>
+  <form id="login-form">
+    <label class="label" for="password">Mot de passe</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" required autofocus>
+    <button id="login" type="submit">ðŸ”“ Se connecter</button>
+    <div id="error" class="error"></div>
+  </form>
+  <div class="note">AccÃ¨s protÃ©gÃ© par le serveur Render</div>
+</main>
+<script>
+(async()=>{
+  const form=document.getElementById('login-form'), input=document.getElementById('password'), btn=document.getElementById('login'), err=document.getElementById('error');
+  try{const r=await fetch('/api/auth/status',{credentials:'include'});const d=await r.json();if(d.authenticated)location.replace('/');}catch(e){}
+  form.addEventListener('submit',async e=>{
+    e.preventDefault(); err.textContent=''; btn.disabled=true; btn.textContent='Connexionâ€¦';
+    try{
+      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok&&d.ok){location.replace('/');return;}
+      err.textContent=d.error==='AUTH_NOT_CONFIGURED'?'Authentification non configurÃ©e sur Render.':'Mot de passe incorrect.';
+      input.value=''; input.focus();
+    }catch(e){err.textContent='Serveur inaccessible.';}
+    finally{btn.disabled=false;btn.textContent='ðŸ”“ Se connecter';}
+  });
+})();
+</script>
+</body>
+</html>
