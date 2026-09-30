@@ -43,6 +43,7 @@ function requirePrivateAuth(req, res, next) {
 
 function setupPrivateAuthRoutes() {
 app.post('/api/auth/login', express.json(), (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const password = String(req.body?.password ?? '');
 
   const plainPassword = process.env.APP_PASSWORD ?? '';
@@ -114,6 +115,7 @@ app.post('/api/auth/login', express.json(), (req, res) => {
   });
 
   app.get('/api/auth/status', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ authenticated: validAuthToken(getCookie(req, 'csp_auth')) });
   });
 }
@@ -147,6 +149,7 @@ app.get('/login.html', (req, res) => {
   if (validAuthToken(getCookie(req, 'csp_auth'))) {
     return res.redirect('/');
   }
+  res.setHeader('Cache-Control', 'no-store');
   return res.sendFile(path.join(process.cwd(), 'public', 'login.html'));
 });
 
@@ -194,33 +197,39 @@ async function createVideoTask(scene, req) {
     throw new Error('Prompt vidéo vide');
   }
 
+  // Agnes Video 2.5 Flash accepte uniquement 4–12 s et 720P.
+  const rawSeconds = Number(scene.seconds ?? (Number(scene.frames) ? Number(scene.frames) / FRAME_RATE : 8));
+  const seconds = Math.max(4, Math.min(12, Math.round(rawSeconds)));
+  const firstFrame = scene.first_frame || null;
+  const lastFrame = scene.last_frame || null;
+  const images = Array.isArray(scene.images) ? scene.images.filter(Boolean).slice(0, 5) : [];
+  let mode = String(scene.mode || '').trim().toLowerCase();
+  if (!['text', 'keyframe', 'reference'].includes(mode)) mode = '';
+  if (!mode) {
+    mode = (firstFrame || lastFrame) ? 'keyframe' : (images.length ? 'reference' : 'text');
+  }
+
   const body = {
     model: MODEL,
     prompt,
-    mode:
-  scene.mode ||
-  (scene.first_frame && scene.last_frame ? 'keyframe' :
-   scene.first_frame ? 'img2video' :
-   Array.isArray(scene.images) && scene.images.length > 0 ? 'reference' :
-   'text'),
-    seconds: String(scene.seconds || 8),
-    size: scene.size || '720P',
+    mode,
+    seconds: String(seconds),
+    size: '720P',
     aspect_ratio: scene.aspect_ratio || '9:16',
     n: 1
   };
 
-  // Image de départ pour img2video / keyframe
-  if (scene.first_frame) {
-    body.first_frame = scene.first_frame;
+  if (mode === 'keyframe') {
+    if (firstFrame) body.first_frame = firstFrame;
+    if (lastFrame) body.last_frame = lastFrame;
+    if (!body.first_frame && !body.last_frame) {
+      throw new Error('Mode keyframe sélectionné sans image de départ ou de fin');
+    }
   }
 
-  if (scene.last_frame) {
-    body.last_frame = scene.last_frame;
-  }
-
-  // Images de référence pour le mode reference
-  if (Array.isArray(scene.images) && scene.images.length > 0) {
-    body.images = scene.images.slice(0, 5);
+  if (mode === 'reference') {
+    if (!images.length) throw new Error('Mode reference sélectionné sans image de référence');
+    body.images = images;
   }
 
   console.log(
@@ -414,7 +423,30 @@ app.post('/api/jobs',requirePrivateAuth, (req,res)=>{
   if(!Array.isArray(scenes)||!scenes.length) return res.status(400).json({error:'Aucune scène.'});
   if(scenes.length>20) return res.status(400).json({error:'Trop de scènes.'});
   const id=crypto.randomUUID();
-  jobs[id]={id,status:'queued',createdAt:Date.now(),updatedAt:Date.now(),scenes:scenes.map(s=>({prompt:String(s.prompt||''),image:s.image||null,frames:Number(s.frames)||480,status:'pending',videoUrl:null,error:null}))};
+  jobs[id] = {
+    id,
+    status: 'queued',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    scenes: scenes.map(s => {
+      const legacyImage = s.image || null;
+      const images = Array.isArray(s.images) && s.images.length ? s.images.slice(0, 5) : (legacyImage ? [legacyImage] : []);
+      return {
+        prompt: String(s.prompt || ''),
+        mode: s.mode || (images.length ? 'reference' : 'text'),
+        seconds: Number(s.seconds) || (Number(s.frames) ? Number(s.frames) / FRAME_RATE : 8),
+        size: '720P',
+        aspect_ratio: s.aspect_ratio || '9:16',
+        first_frame: s.first_frame || null,
+        last_frame: s.last_frame || null,
+        images,
+        frames: Number(s.frames) || 192,
+        status: 'pending',
+        videoUrl: null,
+        error: null
+      };
+    })
+  };
   saveJobs(jobs); processJobs();
   res.status(202).json({id,status:'queued'});
 });
