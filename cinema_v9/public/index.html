@@ -721,37 +721,29 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
             <div class="control-row">
                 <label class="control-label">Durée par scène</label>
                 <div class="radio-group" id="duration-group">
-                    <div class="radio-option" data-frames="121">
-                        <div class="ro-label">~5 s</div>
-                        <div class="ro-desc">121 f</div>
+                    <div class="radio-option" data-frames="96">
+                        <div class="ro-label">~4 s</div>
+                        <div class="ro-desc">96 f · minimum API</div>
                     </div>
-                    <div class="radio-option" data-frames="241">
+                    <div class="radio-option" data-frames="144">
+                        <div class="ro-label">~6 s</div>
+                        <div class="ro-desc">144 f</div>
+                    </div>
+                    <div class="radio-option selected" data-frames="192">
+                        <div class="ro-label">~8 s</div>
+                        <div class="ro-desc">192 f · recommandé</div>
+                    </div>
+                    <div class="radio-option" data-frames="240">
                         <div class="ro-label">~10 s</div>
-                        <div class="ro-desc">241 f</div>
+                        <div class="ro-desc">240 f</div>
                     </div>
-                    <div class="radio-option" data-frames="361">
-                        <div class="ro-label">~15 s</div>
-                        <div class="ro-desc">361 f · sûr</div>
-                    </div>
-                    <div class="radio-option" data-frames="441">
-                        <div class="ro-label">~18,4 s</div>
-                        <div class="ro-desc">441 f · max</div>
-                    </div>
-                    <div class="radio-option selected" data-frames="481">
-                        <div class="ro-label">~20 s</div>
-                        <div class="ro-desc">481 f · test</div>
-                    </div>
-                    <div class="radio-option" data-frames="601">
-                        <div class="ro-label">~25 s</div>
-                        <div class="ro-desc">601 f · test</div>
-                    </div>
-                    <div class="radio-option" data-frames="721">
-                        <div class="ro-label">~30 s</div>
-                        <div class="ro-desc">721 f · test</div>
+                    <div class="radio-option" data-frames="288">
+                        <div class="ro-label">~12 s</div>
+                        <div class="ro-desc">288 f · maximum API</div>
                     </div>
                 </div>
                 <div class="storyboard-hint" style="margin-top:0.6rem;">
-                    ⚠️ Les durées <strong>20 s, 25 s et 30 s</strong> sont expérimentales. Si l'API les refuse, l'application retente automatiquement une durée inférieure acceptée (18,4 s → 15 s → 10 s…). Détails dans le <strong>Journal technique</strong>.
+                    ℹ️ Agnes Video 2.5 Flash accepte les scènes de <strong>4 à 12 secondes</strong>. Les durées proposées ici respectent directement la limite de l’API.
                 </div>
             </div>
             <div class="control-row">
@@ -1091,7 +1083,7 @@ const state = {
     stopRequested: false,
     completed: 0,
     failed: 0,
-    durationFrames: 481,
+    durationFrames: 192,
     quality: 'anime3d',
     motion: 'auto',
     creationAttemptsSinceLastError: 0,
@@ -1877,11 +1869,16 @@ async function startGeneration() {
     document.getElementById('gallery').classList.add('hidden');
     renderScenes(); renderQueue();
 
+    const secondsPerScene = Math.max(4, Math.min(12, Math.round(state.durationFrames / FRAME_RATE)));
     const payload = {
         scenes: state.scenes.map((scene, i) => ({
             prompt: buildScenePrompt(scene.text, i, state.scenes.length, true),
-            image: state.initialRefDataUrl,
-            frames: state.durationFrames
+            mode: 'reference',
+            seconds: secondsPerScene,
+            size: '720P',
+            aspect_ratio: '9:16',
+            images: [state.initialRefDataUrl],
+            frames: Math.round(secondsPerScene * FRAME_RATE)
         }))
     };
 
@@ -2134,7 +2131,7 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
     try {
       const r = await fetch('/api/auth/status', {credentials:'include'});
       const data = await r.json();
-      if (data.authenticated) unlock();
+      if (data.authenticated) unlock(); else location.replace('/login.html');
     } catch (_) {}
   }
   function unlock() {
