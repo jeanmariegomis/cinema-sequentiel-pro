@@ -2,6 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Connexion — Cinéma Séquentiel Pro</title>
 <style>
@@ -210,7 +213,7 @@ CONSOLE AUTH — TEST OK
     return new Date().toLocaleTimeString();
   }
 
-  const DEBUG_KEY = 'cinema_auth_debug_v1';
+  const DEBUG_KEY = 'cinema_auth_debug_v2';
 
   function getSavedLogs() {
     try {
@@ -223,8 +226,8 @@ CONSOLE AUTH — TEST OK
   function saveLog(message, type = 'info') {
     try {
       const logs = getSavedLogs();
-      logs.push({time:new Date().toISOString(), message:String(message), type});
-      localStorage.setItem(DEBUG_KEY, JSON.stringify(logs.slice(-100)));
+      logs.push({ time: new Date().toISOString(), message: String(message), type });
+      localStorage.setItem(DEBUG_KEY, JSON.stringify(logs.slice(-120)));
     } catch (_) {}
   }
 
@@ -499,24 +502,17 @@ CONSOLE AUTH — TEST OK
 
       if (statusData.authenticated) {
 
-  status('CONNECTÉ — TEST');
+        status('Connecté');
 
-  log(
-    '✅ SESSION VALIDÉE',
-    'ok'
-  );
+        log(
+          'SESSION VALIDÉE → ouverture de l’application',
+          'ok'
+        );
 
-  log(
-  '➡️ Tentative d’ouverture de /',
-  'ok'
-);
+        location.replace('/');
 
-log('➡️ Redirection vers / — journaux sauvegardés avant changement de page', 'ok');
-try {
-  sessionStorage.setItem('cinema_auth_last_redirect', new Date().toISOString());
-} catch (_) {}
-location.replace('/');
-}
+        return;
+      }
 
       /*
        * Ici se trouve précisément le problème
