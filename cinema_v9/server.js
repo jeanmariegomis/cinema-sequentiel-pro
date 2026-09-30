@@ -4,51 +4,43 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffmpegPath from '@ffmpeg-installer/ffmpeg';
+
+// ================================================================
+// CINEMA SEQUENTIEL PRO — SERVER V11
+// - Auth APP_PASSWORD + AUTH_SECRET preserved
+// - Correct Agnes V2.0 endpoints
+// - Public hosting for reference images (Agnes needs public URLs)
+// - Sequential continuity: scene N+1 starts from last frame of N
+// - FFmpeg server-side frame extraction
+// - Valid Agnes frame counts (8n+1, <=441)
+// - 20s target supported with 441 frames @ 22fps (~20.05s)
+// - French/no-text continuity constraints
+// ================================================================
 
 const PORT = Number(process.env.PORT || 10000);
-const API_BASE = process.env.AGNES_API_BASE || 'https://apihub.agnes-ai.com/v1';
-const POLL_BASE = process.env.AGNES_POLL_BASE || 'https://apihub.agnes-ai.com/agnesapi';
+const API_BASE = (process.env.AGNES_API_BASE || 'https://apihub.agnes-ai.com/v1').replace(/\/$/, '');
+const POLL_BASE = (process.env.AGNES_POLL_BASE || 'https://apihub.agnes-ai.com/agnesapi').replace(/\/$/, '');
 const MODEL_VIDEO = 'agnes-video-v2.0';
-const FRAME_RATE = 22;
+const DEFAULT_FRAME_RATE = Number(process.env.VIDEO_FRAME_RATE || 22);
 const MAX_FRAMES = 441;
-const DEFAULT_FRAMES = 441;
-const MAX_SCENES = 20;
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
-
 const app = express();
-const execFileAsync = promisify(execFile);
-const ffmpegPath = ffmpegInstaller.path;
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const PUBLIC_DIR = path.join(process.cwd(), 'public');
-const ASSETS_DIR = path.join(PUBLIC_DIR, 'generated');
-const JOBS_FILE = path.join(DATA_DIR, 'jobs.json');
-const TMP_DIR = path.join(DATA_DIR, 'tmp');
-
-for (const dir of [DATA_DIR, PUBLIC_DIR, ASSETS_DIR, TMP_DIR]) {
-  fs.mkdirSync(dir, { recursive: true });
+// ========================= AUTH =========================
+function hashPassword(value) {
+  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
 }
-
-// ============================================================
-// AUTH — compatible with the working Render configuration
-// Uses APP_PASSWORD + AUTH_SECRET. Never expose either value.
-// ============================================================
-function timingSafeStringEqual(a, b) {
-  const aa = Buffer.from(String(a || ''), 'utf8');
-  const bb = Buffer.from(String(b || ''), 'utf8');
-  if (aa.length !== bb.length) return false;
-  return crypto.timingSafeEqual(aa, bb);
+function timingSafeEqualHex(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+  } catch (_) { return false; }
 }
-
 function getCookie(req, name) {
   const raw = req.headers.cookie || '';
   const part = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
-  if (!part) return '';
-  try { return decodeURIComponent(part.slice(name.length + 1)); }
-  catch { return ''; }
+  return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
 }
-
 function makeAuthToken() {
   const exp = Date.now() + 1000 * 60 * 60 * 24 * 30;
   const payload = String(exp);
@@ -56,76 +48,169 @@ function makeAuthToken() {
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   return `${payload}.${sig}`;
 }
-
 function validAuthToken(token) {
   if (!token || !process.env.AUTH_SECRET) return false;
-  const dot = token.indexOf('.');
-  if (dot <= 0) return false;
-  const exp = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return false;
+  const [exp, sig] = String(token).split('.');
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
   const expected = crypto.createHmac('sha256', process.env.AUTH_SECRET).update(exp).digest('hex');
-  return timingSafeStringEqual(sig, expected);
+  return timingSafeEqualHex(sig, expected);
 }
-
 function requirePrivateAuth(req, res, next) {
   if (validAuthToken(getCookie(req, 'csp_auth'))) return next();
   return res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' });
 }
+function setupPrivateAuthRoutes() {
+  app.post('/api/auth/login', express.json(), (req, res) => {
+    const password = String(req.body?.password ?? '');
+    const plainPassword = process.env.APP_PASSWORD ?? '';
+    const expectedHash = process.env.APP_PASSWORD_SHA256 ?? '';
+    const authSecretConfigured = Boolean(process.env.AUTH_SECRET);
 
-app.post('/api/auth/login', express.json(), (req, res) => {
-  const password = String(req.body?.password || '');
-  const expected = process.env.APP_PASSWORD || '';
-  const secret = process.env.AUTH_SECRET || '';
+    // No secret values are logged.
+    console.log('===== AUTH DEBUG V11 =====');
+    console.log('Password received:', password.length > 0);
+    console.log('Password length:', password.length);
+    console.log('APP_PASSWORD configured:', plainPassword.length > 0);
+    console.log('APP_PASSWORD length:', plainPassword.length);
+    console.log('APP_PASSWORD_SHA256 configured:', expectedHash.length > 0);
+    console.log('AUTH_SECRET configured:', authSecretConfigured);
 
-  if (!expected || !secret) {
-    return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
-  }
+    let valid = false;
+    if (plainPassword !== '') {
+      valid = timingSafeEqualHex(hashPassword(password), hashPassword(plainPassword));
+      console.log('Authentication method: APP_PASSWORD');
+    } else if (expectedHash !== '') {
+      valid = timingSafeEqualHex(hashPassword(password), expectedHash.trim().toLowerCase());
+      console.log('Authentication method: APP_PASSWORD_SHA256');
+    } else {
+      console.log('Authentication method: NONE');
+    }
 
-  if (!timingSafeStringEqual(password, expected)) {
-    return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
-  }
+    console.log('Password comparison result:', valid);
+    console.log('==========================');
 
-  const token = makeAuthToken();
-  res.setHeader(
-    'Set-Cookie',
-    `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
-  );
-  return res.json({ ok: true });
+    if ((!plainPassword && !expectedHash) || !authSecretConfigured) {
+      return res.status(503).json({ ok: false, error: 'AUTH_NOT_CONFIGURED' });
+    }
+    if (!valid) return res.status(401).json({ ok: false, error: 'INVALID_PASSWORD' });
+
+    const token = makeAuthToken();
+    res.setHeader(
+      'Set-Cookie',
+      `csp_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`
+    );
+    console.log('Authentication successful');
+    return res.json({ ok: true });
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    res.setHeader('Set-Cookie', 'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+    res.json({ ok: true });
+  });
+
+  app.get('/api/auth/status', (req, res) => {
+    res.json({ authenticated: validAuthToken(getCookie(req, 'csp_auth')) });
+  });
+}
+
+// ========================= AGNES KEY =========================
+const AGNES_API_KEY = process.env.AGNES_API_KEY || '';
+function getAgnesKey(req) {
+  try {
+    const fromClient = req.get('X-Agnes-API-Key');
+    return (fromClient && fromClient.trim()) || '';
+  } catch (_) { return ''; }
+}
+function getApiKeyForRequest(req) {
+  return getAgnesKey(req) || process.env.AGNES_API_KEY || AGNES_API_KEY || '';
+}
+
+// ========================= STORAGE =========================
+const DATA_DIR = path.join(process.cwd(), 'data');
+const JOBS_FILE = path.join(DATA_DIR, 'jobs.json');
+const ASSET_DIR = path.join(DATA_DIR, 'assets');
+const TMP_DIR = path.join(DATA_DIR, 'tmp');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(ASSET_DIR, { recursive: true });
+fs.mkdirSync(TMP_DIR, { recursive: true });
+
+setupPrivateAuthRoutes();
+app.use(express.json({ limit: '25mb' }));
+
+// ===== WEB APP AUTH GATE =====
+const PUBLIC_DIR = path.join(process.cwd(), 'public');
+const INDEX_FILE = path.join(PUBLIC_DIR, 'index.html');
+const LOGIN_FILE = path.join(PUBLIC_DIR, 'login.html');
+
+app.get(['/', '/index.html'], (req, res) => {
+  if (validAuthToken(getCookie(req, 'csp_auth'))) return res.sendFile(INDEX_FILE);
+  return res.sendFile(LOGIN_FILE);
 });
 
-app.post('/api/auth/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
-  res.json({ ok: true });
-});
-
-app.get('/api/auth/status', (req, res) => {
-  res.json({ authenticated: validAuthToken(getCookie(req, 'csp_auth')) });
-});
-
-// ============================================================
-// SERVER / FILES
-// ============================================================
-app.use(express.json({ limit: '30mb' }));
-app.use(express.static(PUBLIC_DIR, { maxAge: '1h' }));
+app.use(express.static(PUBLIC_DIR));
 
 function loadJobs() {
   try { return JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8')); }
-  catch { return {}; }
+  catch (_) { return {}; }
 }
 function saveJobs(value) {
-  const tmp = JOBS_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  fs.renameSync(tmp, JOBS_FILE);
+  fs.writeFileSync(JOBS_FILE, JSON.stringify(value, null, 2));
 }
 let jobs = loadJobs();
 
-function publicBaseUrl(req) {
-  const configured = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+// Agnes V2.0 requires num_frames = 8n+1 and <= 441.
+function normalizeFrames(requested, requestedFps = DEFAULT_FRAME_RATE) {
+  const fps = clampInt(requestedFps, 1, 60, DEFAULT_FRAME_RATE);
+  let frames = clampInt(requested, 121, MAX_FRAMES, 121);
+  frames = 8 * Math.floor((frames - 1) / 8) + 1;
+  frames = Math.max(9, Math.min(MAX_FRAMES, frames));
+  return { frames, fps, seconds: frames / fps };
+}
+
+function getPublicBase(req) {
+  const configured = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
   if (configured) return configured;
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
-  const host = req.get('host');
+  const renderUrl = String(process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/$/, '');
+  if (renderUrl) return renderUrl;
+  const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+  const host = String(req.get('host') || '').trim();
+  if (!host) throw new Error('PUBLIC_BASE_URL introuvable. Configure PUBLIC_BASE_URL sur Render.');
   return `${proto}://${host}`;
+}
+
+function safeToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
+function parseImageInput(image) {
+  if (!image) return null;
+  const value = String(image).trim();
+  if (/^https?:\/\//i.test(value)) return { type: 'url', value };
+  const match = value.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$/i);
+  if (!match) return null;
+  const ext = match[1].toLowerCase() === 'jpg' ? 'jpg' : match[1].toLowerCase();
+  return { type: 'data', ext, base64: match[2].replace(/\s+/g, '') };
+}
+
+function writeReferenceAsset(jobId, sceneIndex, imageInput) {
+  const parsed = parseImageInput(imageInput);
+  if (!parsed) return null;
+  if (parsed.type === 'url') return parsed.value;
+
+  const dir = path.join(ASSET_DIR, jobId);
+  fs.mkdirSync(dir, { recursive: true });
+  const token = safeToken();
+  const filename = `${sceneIndex}-${token}.${parsed.ext}`;
+  const filePath = path.join(dir, filename);
+  fs.writeFileSync(filePath, Buffer.from(parsed.base64, 'base64'));
+  return { filePath, token, ext: parsed.ext };
 }
 
 function safeJob(job) {
@@ -142,137 +227,106 @@ function safeJob(job) {
       status: s.status,
       videoUrl: s.videoUrl || null,
       error: s.error || null,
-      referenceSource: s.referenceSource || null
+      referenceUsed: s.referenceSource === 'last-frame-of-previous-scene' ? 'last-frame' : (s.imageUrl ? 'initial-reference' : 'text-only')
     }))
   };
 }
 
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+// Public, tokenized image endpoint used only by Agnes.
+// The token is unguessable and the endpoint does not expose job JSON or keys.
+app.get('/api/assets/:jobId/:token', (req, res) => {
+  const job = jobs[req.params.jobId];
+  if (!job) return res.status(404).end();
+  const asset = (job.assets || {})[req.params.token];
+  if (!asset || !asset.filePath || !fs.existsSync(asset.filePath)) return res.status(404).end();
+  const ext = asset.ext === 'png' ? 'image/png' : asset.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.type(ext).sendFile(path.resolve(asset.filePath));
+});
 
-function normalizeFrames(value) {
-  let n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) n = DEFAULT_FRAMES;
-  n = Math.floor(n);
-  n = Math.min(n, MAX_FRAMES);
-  // Agnes requires 8n+1.
-  n = 8 * Math.floor((n - 1) / 8) + 1;
-  return Math.max(9, Math.min(MAX_FRAMES, n));
+function registerAsset(job, filePath, ext, publicBase) {
+  const token = safeToken();
+  job.assets = job.assets || {};
+  job.assets[token] = { filePath, ext };
+  return `${publicBase}/api/assets/${encodeURIComponent(job.id)}/${token}`;
 }
 
-function parseDataImage(dataUrl) {
-  if (typeof dataUrl !== 'string') return null;
-  const match = dataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i);
-  if (!match) return null;
-  const mime = match[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : match[1].toLowerCase();
-  const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
-  if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) return null;
-  const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-  return { mime, ext, buffer };
-}
+const execFileAsync = promisify(execFile);
 
-function saveImageBuffer(buffer, ext = 'jpg') {
-  const id = crypto.randomUUID();
-  const filename = `${id}.${ext}`;
-  const absolute = path.join(ASSETS_DIR, filename);
-  fs.writeFileSync(absolute, buffer);
-  return `/generated/${filename}`;
-}
-
-function saveDataImage(dataUrl) {
-  const parsed = parseDataImage(dataUrl);
-  if (!parsed) throw new Error('Image de référence invalide ou trop volumineuse.');
-  return saveImageBuffer(parsed.buffer, parsed.ext);
-}
-
-function absoluteAssetPath(assetUrl) {
-  try {
-    const u = new URL(assetUrl, 'http://local.invalid');
-    const pathname = decodeURIComponent(u.pathname);
-    if (!pathname.startsWith('/generated/')) return null;
-    const filename = path.basename(pathname);
-    const target = path.join(ASSETS_DIR, filename);
-    const resolved = path.resolve(target);
-    if (!resolved.startsWith(path.resolve(ASSETS_DIR) + path.sep)) return null;
-    return resolved;
-  } catch {
-    return null;
-  }
-}
-
-async function downloadToFile(videoUrl, outputPath) {
-  const response = await fetch(videoUrl, { redirect: 'follow' });
-  if (!response.ok) throw new Error(`Téléchargement vidéo HTTP ${response.status}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (!buffer.length) throw new Error('Vidéo vide.');
-  fs.writeFileSync(outputPath, buffer);
-}
-
-async function extractLastFrame(videoUrl) {
+async function extractLastFrameToFile(videoUrl, jobId, sceneIndex) {
   const id = crypto.randomUUID();
   const inputPath = path.join(TMP_DIR, `${id}.mp4`);
   const outputPath = path.join(TMP_DIR, `${id}.jpg`);
 
   try {
-    await downloadToFile(videoUrl, inputPath);
+    console.log(`[V11] Scene ${sceneIndex + 1}: download video for last-frame extraction`);
+    const response = await fetch(videoUrl);
+    if (!response.ok) throw new Error(`Téléchargement vidéo HTTP ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) throw new Error('Vidéo vide reçue du moteur Agnes');
+    fs.writeFileSync(inputPath, buffer);
+
+    const common = ['-y', '-sseof', '-0.30', '-i', inputPath, '-frames:v', '1', '-q:v', '2', '-vf', 'scale=768:-2', outputPath];
     try {
-      await execFileAsync(ffmpegPath, [
-        '-y', '-sseof', '-0.20', '-i', inputPath,
-        '-frames:v', '1', '-q:v', '2', outputPath
-      ], { timeout: 120000 });
-    } catch {
-      await execFileAsync(ffmpegPath, [
-        '-y', '-sseof', '-1', '-i', inputPath,
-        '-frames:v', '1', '-q:v', '2', outputPath
-      ], { timeout: 120000 });
+      await execFileAsync(ffmpegPath.path, common, { timeout: 120000 });
+    } catch (_) {
+      await execFileAsync(ffmpegPath.path, ['-y', '-sseof', '-1', '-i', inputPath, '-frames:v', '1', '-q:v', '2', '-vf', 'scale=768:-2', outputPath], { timeout: 120000 });
     }
 
-    if (!fs.existsSync(outputPath)) throw new Error('FFmpeg n’a pas produit la dernière frame.');
-    const jpg = fs.readFileSync(outputPath);
-    return saveImageBuffer(jpg, 'jpg');
+    if (!fs.existsSync(outputPath)) throw new Error('FFmpeg n’a pas produit la dernière image');
+    const finalDir = path.join(ASSET_DIR, jobId);
+    fs.mkdirSync(finalDir, { recursive: true });
+    const finalPath = path.join(finalDir, `last-frame-${sceneIndex + 1}-${crypto.randomBytes(8).toString('hex')}.jpg`);
+    fs.copyFileSync(outputPath, finalPath);
+    return finalPath;
   } finally {
-    try { fs.unlinkSync(inputPath); } catch {}
-    try { fs.unlinkSync(outputPath); } catch {}
+    try { fs.unlinkSync(inputPath); } catch (_) {}
+    try { fs.unlinkSync(outputPath); } catch (_) {}
   }
 }
 
-function absoluteAgnesImageUrl(assetUrl) {
-  const base = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
-  if (!base) return null;
-  return `${base}${assetUrl.startsWith('/') ? '' : '/'}${assetUrl}`;
-}
-
-function buildPrompt(scene) {
-  const continuity = scene.index === 0
-    ? 'This is the first scene. Establish the exact character identity from the provided reference image.'
-    : 'CONTINUITY IS MANDATORY: continue from the exact final visual state of the previous scene. Preserve the same person, face, age, skin tone, hairstyle, hairline, facial proportions, body proportions, clothing, accessories and visual identity. Do not redesign or replace the character.';
-
-  return `${scene.prompt}\n\n${continuity}\n\nAUDIO/LANGUAGE: all spoken dialogue must be in French only. Do not speak English, Arabic, Spanish, Portuguese, or any other language. No subtitles, captions, signs, labels, logos, watermarks, or generated on-screen text.\nVISUAL CONTINUITY: realistic anatomy, stable identity, stable clothing and accessories, no face morphing, no character replacement, no duplicate character unless explicitly requested.`;
+function addContinuityToPrompt(prompt, sceneIndex) {
+  const language = 'All spoken dialogue must be in French only. Do not speak English, Arabic, Spanish, Portuguese, German, or any other language.';
+  const noText = 'No subtitles, no captions, no written words, no signs with readable text, no logos, no watermark, no UI text.';
+  const identity = 'Preserve the exact same character identity: same face, eyes, eyebrows, nose, mouth, hairstyle, hair color, age, skin tone, body proportions, clothing, accessories and silhouette. Never redesign or replace the character.';
+  const continuity = sceneIndex === 0
+    ? 'This is the first scene. Establish the character and world exactly from the supplied reference image.'
+    : 'This scene is a direct continuation of the immediately previous scene. Start from the supplied last-frame image as the exact visual starting state. Do not reset the story or redesign the character.';
+  return `${String(prompt || '').trim()}\n\nABSOLUTE V11 CONTINUITY RULES:\n- ${identity}\n- ${continuity}\n- Keep environment, props, lighting direction, color palette and wardrobe consistent unless the prompt explicitly changes them.\n- Natural anatomy, hands, fingers, eyes and object scale.\n- ${language}\n- ${noText}`.trim();
 }
 
 const NEGATIVE_PROMPT = [
-  'different person', 'different face', 'face morphing', 'identity drift',
-  'different hairstyle', 'different hairline', 'different age', 'different skin tone',
-  'different clothes', 'different accessories', 'deformed face', 'extra fingers',
-  'extra limbs', 'duplicate person', 'English speech', 'Arabic speech',
-  'Spanish speech', 'Portuguese speech', 'foreign language', 'subtitles',
-  'captions', 'text', 'letters', 'watermark', 'logo'
+  'different face', 'different person', 'identity change', 'face redesign', 'age change',
+  'different hairstyle', 'different hair color', 'different clothes', 'different body proportions',
+  'deformed face', 'extra fingers', 'bad hands', 'extra limbs', 'duplicate person',
+  'subtitles', 'captions', 'written text', 'letters', 'logos', 'watermark', 'UI',
+  'English speech', 'Arabic speech', 'Spanish speech', 'Portuguese speech', 'German speech',
+  'foreign language', 'unintelligible dialogue'
 ].join(', ');
 
-async function createVideoTask(scene) {
-  const apiKey = process.env.AGNES_API_KEY || '';
+async function createVideoTask(scene, req) {
+  const apiKey = getApiKeyForRequest(req);
   if (!apiKey) throw new Error('AGNES_API_KEY non configurée sur le serveur.');
-  if (!scene.imageUrl) throw new Error(`Référence image absente pour la scène ${scene.index + 1}.`);
+
+  const normalized = normalizeFrames(scene.frames, scene.frameRate || DEFAULT_FRAME_RATE);
+  scene.frames = normalized.frames;
+  scene.frameRate = normalized.fps;
 
   const body = {
     model: MODEL_VIDEO,
-    prompt: buildPrompt(scene),
+    prompt: addContinuityToPrompt(scene.prompt, scene.index),
     negative_prompt: NEGATIVE_PROMPT,
-    num_frames: normalizeFrames(scene.frames),
-    frame_rate: FRAME_RATE,
-    image: scene.imageUrl
+    width: 1152,
+    height: 768,
+    num_frames: normalized.frames,
+    frame_rate: normalized.fps
   };
 
-  const response = await fetch(`${API_BASE}/videos`, {
+  if (scene.imageUrl) body.image = scene.imageUrl;
+
+  console.log(`[V11] Creating scene ${scene.index + 1}: ${normalized.frames} frames @ ${normalized.fps}fps (${normalized.seconds.toFixed(2)}s), image=${Boolean(scene.imageUrl)}`);
+
+  const res = await fetch(`${API_BASE}/videos`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -281,58 +335,57 @@ async function createVideoTask(scene) {
     body: JSON.stringify(body)
   });
 
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Création Agnes HTTP ${response.status} — ${text.slice(0, 500)}`);
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`Creation HTTP ${res.status} — ${txt.slice(0, 500)}`);
 
   let data;
-  try { data = JSON.parse(text); }
-  catch { throw new Error('Réponse Agnes invalide lors de la création.'); }
+  try { data = JSON.parse(txt); }
+  catch (_) { throw new Error('Réponse Agnes invalide lors de la création.'); }
 
   const id = data.video_id || data.id || data.task_id;
-  if (!id) throw new Error("L'API Agnes n'a pas retourné d'identifiant vidéo.");
+  if (!id) throw new Error("L'API Agnes n'a pas retourné de video_id/task_id.");
   return id;
 }
 
-async function pollVideo(videoId) {
-  const apiKey = process.env.AGNES_API_KEY || '';
+async function pollVideo(videoId, req) {
+  const apiKey = getApiKeyForRequest(req);
   if (!apiKey) throw new Error('AGNES_API_KEY non configurée sur le serveur.');
 
   for (let attempt = 0; attempt < 180; attempt++) {
     const url = `${POLL_BASE}?video_id=${encodeURIComponent(videoId)}&model_name=${encodeURIComponent(MODEL_VIDEO)}`;
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${apiKey}` }
-    });
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${apiKey}` } });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`Polling HTTP ${res.status} — ${txt.slice(0, 400)}`);
 
-    const text = await response.text();
-    if (!response.ok) throw new Error(`Polling Agnes HTTP ${response.status} — ${text.slice(0, 400)}`);
+    let d;
+    try { d = JSON.parse(txt); }
+    catch (_) { throw new Error('Réponse Agnes invalide pendant le polling.'); }
 
-    let data;
-    try { data = JSON.parse(text); }
-    catch { throw new Error('Réponse Agnes invalide pendant le polling.'); }
-
-    const status = String(data.status || data.state || 'unknown').toLowerCase();
-    const videoUrl = data.url || data.video_url || data.output?.url || data.metadata?.url;
-
-    if (['completed', 'succeeded', 'success', 'done'].includes(status) && videoUrl) {
-      return videoUrl;
+    const status = String(d.status || 'unknown').toLowerCase();
+    if (['completed', 'succeeded', 'done'].includes(status)) {
+      const urlOut = d.url || d.video_url || d.remixed_from_video_id || (d.metadata && d.metadata.url) || (d.output && d.output.url);
+      if (!urlOut || !/^https?:\/\//i.test(String(urlOut))) {
+        throw new Error('Vidéo terminée mais URL vidéo absente.');
+      }
+      return String(urlOut);
+    }
+    if (['failed', 'error', 'cancelled'].includes(status)) {
+      const detail = typeof d.error === 'string' ? d.error : JSON.stringify(d.error || {});
+      throw new Error(`Échec moteur vidéo: ${detail.slice(0, 500)}`);
     }
 
-    if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-      const detail = data.error?.message || data.error || data.message || status;
-      throw new Error(`Échec moteur vidéo: ${String(detail).slice(0, 500)}`);
-    }
-
+    if (attempt % 6 === 0) console.log(`[V11] Poll ${videoId}: ${status} ${d.progress ?? ''}`);
     await sleep(5000);
   }
-
-  throw new Error('Délai maximal dépassé pendant la génération vidéo.');
+  throw new Error('Délai maximal dépassé (15 minutes).');
 }
 
 let workerBusy = false;
 
 async function processJobs() {
   if (workerBusy) return;
-  if (!process.env.AGNES_API_KEY) return;
+  const serverKey = process.env.AGNES_API_KEY || AGNES_API_KEY;
+  if (!serverKey) return;
 
   const job = Object.values(jobs).find(j => j.status === 'queued' || j.status === 'processing');
   if (!job) return;
@@ -343,44 +396,36 @@ async function processJobs() {
     job.updatedAt = Date.now();
     saveJobs(jobs);
 
-    for (let index = 0; index < job.scenes.length; index++) {
-      const scene = job.scenes[index];
+    for (let sceneIndex = 0; sceneIndex < job.scenes.length; sceneIndex++) {
+      const scene = job.scenes[sceneIndex];
+      scene.index = sceneIndex;
       if (scene.status === 'done') continue;
       if (job.status === 'cancelled') break;
 
-      // --------------------------------------------------------
-      // CONTINUITY CHAIN
-      // Scene 1 uses its own reference image.
-      // Scene 2+ uses the actual last frame of the previous scene.
-      // This intentionally overrides scene 2/3 reference images when
-      // sequential continuity is enabled, because Agnes' image field
-      // is the actual first frame, not a separate identity reference.
-      // --------------------------------------------------------
-      if (index > 0) {
-        const previous = job.scenes[index - 1];
+      // IMPORTANT: scene 1 keeps its original reference.
+      // Scene N+1 receives the exact last frame of scene N.
+      if (sceneIndex > 0) {
+        const previous = job.scenes[sceneIndex - 1];
         if (!previous.videoUrl) {
           scene.status = 'failed';
-          scene.error = 'La scène précédente ne possède aucune vidéo terminée.';
+          scene.error = 'La scène précédente n’a pas produit de vidéo.';
           job.status = 'failed';
-          job.updatedAt = Date.now();
           saveJobs(jobs);
           break;
         }
 
         try {
-          if (!previous.lastFrameUrl) {
-            previous.lastFrameUrl = await extractLastFrame(previous.videoUrl);
-          }
-          scene.imageUrl = absoluteAgnesImageUrl(previous.lastFrameUrl);
+          const framePath = await extractLastFrameToFile(previous.videoUrl, job.id, sceneIndex - 1);
+          const publicUrl = registerAsset(job, framePath, 'jpg', job.publicBaseUrl);
+          scene.imageUrl = publicUrl;
           scene.referenceSource = 'last-frame-of-previous-scene';
-          if (!scene.imageUrl) {
-            throw new Error('PUBLIC_BASE_URL/RENDER_EXTERNAL_URL absent : impossible de créer une URL publique.');
-          }
+          scene.lastFramePath = framePath;
           job.updatedAt = Date.now();
           saveJobs(jobs);
-        } catch (error) {
+          console.log(`[V11] Scene ${sceneIndex + 1}: chained to last frame of scene ${sceneIndex}`);
+        } catch (e) {
           scene.status = 'failed';
-          scene.error = `Continuité : ${error.message}`;
+          scene.error = `Extraction dernière frame : ${e.message}`;
           job.status = 'failed';
           job.updatedAt = Date.now();
           saveJobs(jobs);
@@ -389,30 +434,44 @@ async function processJobs() {
       }
 
       scene.status = 'processing';
-      scene.error = null;
       job.updatedAt = Date.now();
       saveJobs(jobs);
 
       try {
-        const videoId = await createVideoTask(scene);
+        const videoId = await createVideoTask(scene, { get: () => '' });
         scene.videoId = videoId;
         job.updatedAt = Date.now();
         saveJobs(jobs);
 
-        scene.videoUrl = await pollVideo(videoId);
+        scene.videoUrl = await pollVideo(videoId, { get: () => '' });
         scene.status = 'done';
-
-        if (index < job.scenes.length - 1) {
-          scene.lastFrameUrl = await extractLastFrame(scene.videoUrl);
-          job.scenes[index + 1].imageUrl = absoluteAgnesImageUrl(scene.lastFrameUrl);
-          job.scenes[index + 1].referenceSource = 'last-frame-of-previous-scene';
-        }
-
+        scene.error = null;
         job.updatedAt = Date.now();
         saveJobs(jobs);
-      } catch (error) {
+
+        // Pre-extract the next reference immediately after completion.
+        if (sceneIndex < job.scenes.length - 1) {
+          try {
+            const framePath = await extractLastFrameToFile(scene.videoUrl, job.id, sceneIndex);
+            const nextScene = job.scenes[sceneIndex + 1];
+            nextScene.imageUrl = registerAsset(job, framePath, 'jpg', job.publicBaseUrl);
+            nextScene.referenceSource = 'last-frame-of-previous-scene';
+            nextScene.lastFramePath = framePath;
+            job.updatedAt = Date.now();
+            saveJobs(jobs);
+            console.log(`[V11] Prepared continuity frame for scene ${sceneIndex + 2}`);
+          } catch (e) {
+            scene.status = 'failed';
+            scene.error = `Préparation continuité : ${e.message}`;
+            job.status = 'failed';
+            job.updatedAt = Date.now();
+            saveJobs(jobs);
+            break;
+          }
+        }
+      } catch (e) {
         scene.status = 'failed';
-        scene.error = error?.message || String(error);
+        scene.error = e.message;
         job.status = 'failed';
         job.updatedAt = Date.now();
         saveJobs(jobs);
@@ -420,12 +479,9 @@ async function processJobs() {
       }
     }
 
-    if (job.scenes.every(s => s.status === 'done')) {
-      job.status = 'completed';
-    } else if (job.status !== 'failed' && job.status !== 'cancelled') {
-      job.status = 'queued';
+    if (job.status !== 'failed' && job.status !== 'cancelled') {
+      job.status = job.scenes.every(s => s.status === 'done') ? 'completed' : 'queued';
     }
-
     job.updatedAt = Date.now();
     saveJobs(jobs);
   } finally {
@@ -433,132 +489,124 @@ async function processJobs() {
   }
 }
 
-// ============================================================
-// API
-// ============================================================
+// ========================= API =========================
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     version: 'V11',
-    workerConfigured: Boolean(process.env.AGNES_API_KEY),
-    publicBaseConfigured: Boolean(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL),
+    workerConfigured: Boolean(process.env.AGNES_API_KEY || AGNES_API_KEY),
     model: MODEL_VIDEO,
-    frameRate: FRAME_RATE,
-    defaultFrames: DEFAULT_FRAMES
+    apiBase: API_BASE,
+    pollBase: POLL_BASE,
+    ffmpegConfigured: Boolean(ffmpegPath?.path),
+    frameRule: '8n+1 <= 441',
+    defaultFrameRate: DEFAULT_FRAME_RATE
   });
 });
 
-// Upload/convert a browser data-image to a public URL.
-app.post('/api/assets/image', requirePrivateAuth, (req, res) => {
-  try {
-    const dataUrl = String(req.body?.image || '');
-    const relative = saveDataImage(dataUrl);
-    return res.json({ ok: true, url: `${publicBaseUrl(req)}${relative}` });
-  } catch (error) {
-    return res.status(400).json({ ok: false, error: error.message });
-  }
-});
-
 app.post('/api/jobs', requirePrivateAuth, (req, res) => {
-  if (!process.env.AGNES_API_KEY) {
-    return res.status(503).json({ error: 'AGNES_API_KEY non configurée sur le serveur.' });
-  }
+  const key = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
+  if (!key) return res.status(503).json({ error: 'AGNES_API_KEY non configurée sur le serveur.' });
 
-  const scenes = req.body?.scenes;
-  if (!Array.isArray(scenes) || scenes.length === 0) {
-    return res.status(400).json({ error: 'Aucune scène.' });
-  }
-  if (scenes.length > MAX_SCENES) {
-    return res.status(400).json({ error: `Maximum ${MAX_SCENES} scènes.` });
-  }
+  const { scenes } = req.body || {};
+  if (!Array.isArray(scenes) || !scenes.length) return res.status(400).json({ error: 'Aucune scène.' });
+  if (scenes.length > 20) return res.status(400).json({ error: 'Trop de scènes.' });
+  if (!ffmpegPath?.path) return res.status(503).json({ error: 'FFmpeg serveur indisponible. Ajoute @ffmpeg-installer/ffmpeg dans package.json.' });
 
-  const baseUrl = publicBaseUrl(req);
+  let publicBaseUrl;
+  try { publicBaseUrl = getPublicBase(req); }
+  catch (e) { return res.status(503).json({ error: e.message }); }
+
   const id = crypto.randomUUID();
+  const normalizedScenes = scenes.map((s, index) => {
+    const requestedFrames = Number(s.frames) || 441;
+    const requestedFps = Number(s.frameRate) || DEFAULT_FRAME_RATE;
+    const norm = normalizeFrames(requestedFrames, requestedFps);
+    const originalImage = s.image || s.referenceImage || null;
+    let imageUrl = null;
+    let assetMeta = null;
 
-  try {
-    const normalizedScenes = scenes.map((input, index) => {
-      const prompt = String(input?.prompt || '').trim();
-      if (!prompt) throw new Error(`Prompt vide pour la scène ${index + 1}.`);
+    const parsed = parseImageInput(originalImage);
+    if (parsed?.type === 'url') imageUrl = parsed.value;
+    if (parsed?.type === 'data') {
+      assetMeta = writeReferenceAsset(id, index, originalImage);
+      if (assetMeta) imageUrl = `${publicBaseUrl}/api/assets/${encodeURIComponent(id)}/${encodeURIComponent(assetMeta.token)}`;
+    }
 
-      let imageUrl = null;
-      const incomingImage = input?.image || input?.imageDataUrl || input?.referenceImage || null;
-
-      if (incomingImage) {
-        if (/^data:image\//i.test(String(incomingImage))) {
-          const relative = saveDataImage(String(incomingImage));
-          imageUrl = `${baseUrl}${relative}`;
-        } else if (/^https?:\/\//i.test(String(incomingImage))) {
-          imageUrl = String(incomingImage);
-        } else {
-          throw new Error(`Image de référence invalide pour la scène ${index + 1}.`);
-        }
-      }
-
-      // If there is no image for scene 1, fail immediately. Scenes after
-      // scene 1 will receive their image from the continuity chain.
-      if (index === 0 && !imageUrl) {
-        throw new Error('La scène 1 doit avoir une image de référence.');
-      }
-
-      return {
-        index,
-        prompt,
-        originalReferenceUrl: imageUrl,
-        imageUrl,
-        frames: normalizeFrames(input?.frames),
-        status: 'pending',
-        videoId: null,
-        videoUrl: null,
-        lastFrameUrl: null,
-        referenceSource: index === 0 ? 'scene-1-reference' : 'pending-continuity',
-        error: null
-      };
-    });
-
-    jobs[id] = {
-      id,
-      status: 'queued',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      scenes: normalizedScenes
+    return {
+      index,
+      prompt: String(s.prompt || ''),
+      // imageUrl is the URL Agnes receives. Scene 1 keeps the supplied image.
+      // Scenes 2+ are overwritten by the previous scene's last frame.
+      imageUrl,
+      originalImageProvided: Boolean(originalImage),
+      frames: norm.frames,
+      frameRate: norm.fps,
+      requestedSeconds: norm.seconds,
+      status: 'pending',
+      videoId: null,
+      videoUrl: null,
+      error: null,
+      referenceSource: imageUrl ? 'initial-reference' : 'text-only'
     };
+  });
 
-    saveJobs(jobs);
-    processJobs();
-    return res.status(202).json({ id, status: 'queued', version: 'V11' });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || String(error) });
+  jobs[id] = {
+    id,
+    status: 'queued',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    publicBaseUrl,
+    assets: {},
+    scenes: normalizedScenes
+  };
+
+  // Re-register initial data-url assets in the job token map.
+  for (const scene of normalizedScenes) {
+    if (scene.imageUrl && scene.imageUrl.startsWith(publicBaseUrl + '/api/assets/')) {
+      const token = scene.imageUrl.split('/').pop();
+      const dir = path.join(ASSET_DIR, id);
+      const files = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+      const matching = files.find(name => name.includes(token));
+      if (matching) {
+        const ext = path.extname(matching).slice(1).toLowerCase();
+        jobs[id].assets[token] = { filePath: path.join(dir, matching), ext };
+      }
+    }
   }
+
+  saveJobs(jobs);
+  processJobs();
+  return res.status(202).json({ id, status: 'queued', version: 'V11' });
 });
 
 app.get('/api/jobs/:id', requirePrivateAuth, (req, res) => {
   const job = jobs[req.params.id];
-  if (!job) return res.status(404).json({ error: 'Job introuvable.' });
-  res.json(safeJob(job));
+  if (!job) return res.status(404).json({ error: 'Job introuvable' });
+  return res.json(safeJob(job));
 });
 
 app.post('/api/jobs/:id/cancel', requirePrivateAuth, (req, res) => {
   const job = jobs[req.params.id];
-  if (!job) return res.status(404).json({ error: 'Job introuvable.' });
-  if (job.status === 'completed') return res.status(409).json({ error: 'Déjà terminé.' });
+  if (!job) return res.status(404).json({ error: 'Job introuvable' });
+  if (job.status === 'completed') return res.status(409).json({ error: 'Déjà terminé' });
   job.status = 'cancelled';
   job.updatedAt = Date.now();
   saveJobs(jobs);
-  res.json(safeJob(job));
+  return res.json(safeJob(job));
 });
 
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  if (validAuthToken(getCookie(req, 'csp_auth'))) return res.sendFile(INDEX_FILE);
+  return res.sendFile(LOGIN_FILE);
 });
 
 app.listen(PORT, () => {
-  console.log(`Cinema Séquentiel Pro V11 listening on :${PORT}`);
-  console.log(`APP_PASSWORD configured: ${Boolean(process.env.APP_PASSWORD)}`);
-  console.log(`AUTH_SECRET configured: ${Boolean(process.env.AUTH_SECRET)}`);
-  console.log(`AGNES_API_KEY configured: ${Boolean(process.env.AGNES_API_KEY)}`);
-  console.log(`PUBLIC_BASE_URL: ${process.env.PUBLIC_BASE_URL ? 'configured' : 'not set (Render URL fallback)'}`);
-  console.log(`Agnes create endpoint: ${API_BASE}/videos`);
-  console.log(`Agnes polling endpoint: ${POLL_BASE}`);
+  console.log(`Cinema V11 listening on :${PORT}`);
+  console.log(`Agnes create: ${API_BASE}/videos`);
+  console.log(`Agnes poll: ${POLL_BASE}?video_id=...&model_name=${MODEL_VIDEO}`);
+  console.log(`FFmpeg: ${ffmpegPath?.path || 'UNAVAILABLE'}`);
+  console.log(`Default video timing: ${DEFAULT_FRAME_RATE}fps, max 441 frames`);
 });
 
 setInterval(processJobs, 3000);
