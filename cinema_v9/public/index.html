@@ -572,7 +572,7 @@
         <img id="ref-preview" style="display:none;max-width:100%;max-height:260px;border-radius:12px;margin:1rem auto 0;border:2px solid #fbbf24">
         <div id="ref-info" style="display:none;font-size:.75rem;color:var(--ink-dim);margin-top:.8rem;background:rgba(0,0,0,.3);padding:.5rem;border-radius:8px"></div>
     </div>
-    <input type="file" id="ref-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+    <input type="file" id="ref-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="position:absolute;width:1px;height:1px;opacity:0">
     <div style="display:flex;gap:.6rem;margin-top:.8rem">
         <button type="button" id="ref-clear-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--border);background:var(--panel-3);color:var(--ink);font-size:.8rem;display:none">🗑 Supprimer</button>
         <button type="button" id="ref-preview-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--accent);background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;display:none">👁️ Voir en grand</button>
@@ -1864,7 +1864,7 @@ async function startGeneration() {
     try {
         addLog('════ ENVOI AU SERVEUR V9.3 ════', 'info');
         addLog('Le serveur prend maintenant le relais : tu peux fermer Chrome après le lancement.', 'success');
-        const res = await fetch('/api/jobs, {headers: agnesHeaders(), method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        const res = await fetch('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Impossible de créer la tâche serveur');
         const jobId = data.id;
