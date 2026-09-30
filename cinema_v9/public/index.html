@@ -533,7 +533,7 @@
 
 
 <header>
-    <h1>Cinéma Séquentiel Pro v6</h1>
+    <h1>Cinéma Séquentiel Pro v9.3</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
 </header>
 
@@ -752,7 +752,7 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
             </div>
             <div class="storyboard-hint" style="margin-top:0.4rem;">🔒 <strong>Sous-titres désactivés :</strong> les dialogues restent audio uniquement.</div>
             <div class="storyboard-hint" style="margin-top:0.4rem;">🔒 <strong>Verrouillage audio :</strong> la langue sélectionnée est imposée à toutes les scènes et le modèle ne doit pas changer de langue.</div>
-            <div class="storyboard-hint" style="margin-top:0.4rem;">🛡️ <strong>Mode V8 :</strong> l'image maître est réutilisée pour toutes les scènes. Aucun décodage MP4 ni Worker FFmpeg n'est nécessaire sur le téléphone.</div>
+            <div class="storyboard-hint" style="margin-top:0.4rem;">🛡️ <strong>Mode V9.3 :</strong> la scène 1 utilise l'image maître, puis le serveur extrait la dernière frame de chaque scène pour alimenter automatiquement la suivante.</div>
             <div class="control-row">
                 <label class="control-label">Mouvement global</label>
                 <select id="motion-select">
@@ -1130,18 +1130,24 @@ function updateApiPanel_OLD() {
 function updateGenerateBtn() {
     const btn = document.getElementById('generate-btn');
     if (!btn) return;
+
     const hasScenes = state.scenes.length > 0;
-    const hasKey = !!getApiKey();
-    btn.disabled = !hasScenes || !hasKey || state.isRunning;
+    const hasBible = !!(document.getElementById('bible-input')?.value.trim());
+    const hasRef = !!state.initialRefDataUrl;
+
+    btn.disabled = !hasScenes || !hasBible || !hasRef || state.isRunning;
+
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
-    } else if (!hasKey) {
-        btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
-        btn.textContent = '✂️ Découpez d\'abord votre scénario';
+        btn.textContent = '✂️ Découpez d’abord votre scénario';
+    } else if (!hasBible) {
+        btn.textContent = '📖 Remplissez la bible visuelle';
+    } else if (!hasRef) {
+        btn.textContent = '🖼️ Ajoutez l’image de référence';
     } else {
         const durSec = (state.durationFrames / FRAME_RATE).toFixed(1);
-        btn.textContent = '🎬 Générer le plan séquence — ' + state.scenes.length + ' scènes × ' + durSec + 's';
+        btn.textContent = '🎬 Générer le film — ' + state.scenes.length + ' scènes × ' + durSec + 's';
     }
 }
 
@@ -1966,6 +1972,7 @@ function setupRefImageHandlers(){
         status.style.display='block';
         status.innerHTML='✅ Prêt : Scène 1 = ton image | Scène 2 = dernière frame Scène 1 (auto)';
         addLog('Image de référence ajoutée : '+file.name+' ('+Math.round(dataUrl.length/1024)+' Ko) - S1 = cette image', 'success');
+        updateGenerateBtn();
         showToast('Référence ajoutée pour Scène 1 ✅', 'success');
     };
 
@@ -1993,6 +2000,7 @@ function setupRefImageHandlers(){
         status.style.display='none';
         input.value='';
         addLog('Image de référence supprimée', 'warn');
+        updateGenerateBtn();
         showToast('Référence supprimée', 'warn');
     });
 
@@ -2041,6 +2049,7 @@ function setupRefImageHandlers(){
 
     document.getElementById('bible-input')?.addEventListener('input', e => {
         state.bible = e.target.value;
+        updateGenerateBtn();
     });
 
     document.querySelectorAll('#duration-group .radio-option').forEach(opt => {
@@ -2087,8 +2096,8 @@ function setupRefImageHandlers(){
     updateStoryboardSummary();
     updateGenerateBtn();
 
-    addLog('Application prête (V9 — génération serveur en arrière-plan)', 'success');
-    setTimeout(resumeServerJobIfAny, 500);
+    addLog('Application prête (V9.3 — génération serveur en arrière-plan)', 'success');
+    // Server-job resume is triggered only after successful password login.
 })();
 </script>
 
@@ -2129,6 +2138,7 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
       if (r.ok && data.ok) {
         input.value = '';
         unlock();
+        try { await resumeServerJobIfAny(); } catch (_) {}
       } else {
         error.textContent = data.error === 'AUTH_NOT_CONFIGURED'
           ? 'Le mot de passe serveur n’est pas encore configuré.'
@@ -2147,7 +2157,8 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
     document.getElementById('private-password')?.addEventListener('keydown', e => {
       if (e.key === 'Enter') login();
     });
-    checkStatus();
+    // Intentionally do NOT auto-unlock from the long-lived server cookie.
+    // The app asks for the project password whenever the page is opened.
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
