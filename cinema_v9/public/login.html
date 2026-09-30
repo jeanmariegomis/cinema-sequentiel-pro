@@ -210,18 +210,31 @@ CONSOLE AUTH — TEST OK
     return new Date().toLocaleTimeString();
   }
 
+  const DEBUG_KEY = 'cinema_auth_debug_v1';
+
+  function getSavedLogs() {
+    try {
+      const raw = localStorage.getItem(DEBUG_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) { return []; }
+  }
+
+  function saveLog(message, type = 'info') {
+    try {
+      const logs = getSavedLogs();
+      logs.push({time:new Date().toISOString(), message:String(message), type});
+      localStorage.setItem(DEBUG_KEY, JSON.stringify(logs.slice(-100)));
+    } catch (_) {}
+  }
+
   function log(message, type = 'info') {
-
     const line = document.createElement('div');
-
     line.className = `log log-${type}`;
-
     line.textContent = `[${now()}] ${message}`;
-
     consoleBox.appendChild(line);
-
     consoleBox.scrollTop = consoleBox.scrollHeight;
-
+    saveLog(message, type);
     console.log('[AUTH]', message);
   }
 
@@ -230,10 +243,29 @@ CONSOLE AUTH — TEST OK
   }
 
   clearButton.addEventListener('click', () => {
+    try { localStorage.removeItem(DEBUG_KEY); } catch (_) {}
     consoleBox.innerHTML = '';
     log('Console effacée');
   });
 
+  function restoreSavedLogs() {
+    const logs = getSavedLogs();
+    if (!logs.length) return;
+    const header = document.createElement('div');
+    header.className = 'log log-warn';
+    header.textContent = '──── Journaux persistants récupérés ────';
+    consoleBox.appendChild(header);
+    for (const item of logs) {
+      const line = document.createElement('div');
+      line.className = `log log-${item.type || 'info'}`;
+      const time = item.time ? new Date(item.time).toLocaleTimeString() : '--:--:--';
+      line.textContent = `[${time}] ${item.message}`;
+      consoleBox.appendChild(line);
+    }
+    consoleBox.scrollTop = consoleBox.scrollHeight;
+  }
+
+  restoreSavedLogs();
   log('Page de connexion chargée');
 
   /*
@@ -479,7 +511,11 @@ CONSOLE AUTH — TEST OK
   'ok'
 );
 
-location.href = '/';
+log('➡️ Redirection vers / — journaux sauvegardés avant changement de page', 'ok');
+try {
+  sessionStorage.setItem('cinema_auth_last_redirect', new Date().toISOString());
+} catch (_) {}
+location.replace('/');
 }
 
       /*
