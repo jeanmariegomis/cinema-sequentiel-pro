@@ -178,45 +178,194 @@ function safeJob(job){
 }
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-async function createVideoTask(scene, req){
-  const apiKeyToUse = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
-  const body = { model: MODEL_VIDEO, prompt: scene.prompt, num_frames: scene.frames, frame_rate: FRAME_RATE };
-  if (scene.image) body.image = scene.image;
-  const res = await fetch(API_BASE + '/videos', {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':'Bearer '+ apiKeyToUse
+async function createVideoTask(scene, req) {
+  const apiKeyToUse =
+    getApiKeyForRequest(req) ||
+    process.env.AGNES_API_KEY ||
+    AGNES_API_KEY;
+
+  if (!apiKeyToUse) {
+    throw new Error('AGNES_API_KEY non configurée');
+  }
+
+  const prompt = String(scene.prompt || '').trim();
+
+  if (!prompt) {
+    throw new Error('Prompt vidéo vide');
+  }
+
+  const body = {
+    model: MODEL,
+    prompt,
+    mode: scene.mode || 'text',
+    seconds: String(scene.seconds || 8),
+    size: scene.size || '720P',
+    aspect_ratio: scene.aspect_ratio || '9:16',
+    n: 1
+  };
+
+  // Image de départ pour img2video / keyframe
+  if (scene.first_frame) {
+    body.first_frame = scene.first_frame;
+  }
+
+  if (scene.last_frame) {
+    body.last_frame = scene.last_frame;
+  }
+
+  // Images de référence pour le mode reference
+  if (Array.isArray(scene.images) && scene.images.length > 0) {
+    body.images = scene.images.slice(0, 5);
+  }
+
+  console.log(
+    '[VIDEO CREATE]',
+    JSON.stringify({
+      model: body.model,
+      mode: body.mode,
+      seconds: body.seconds,
+      size: body.size,
+      aspect_ratio: body.aspect_ratio,
+      hasFirstFrame: Boolean(body.first_frame),
+      hasLastFrame: Boolean(body.last_frame),
+      imageCount: Array.isArray(body.images) ? body.images.length : 0
+    })
+  );
+
+  const response = await fetch(`${API_BASE}/videos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKeyToUse}`
     },
     body: JSON.stringify(body)
   });
-  const txt = await res.text();
-  if (!res.ok) throw new Error('Creation HTTP '+res.status+' — '+txt.slice(0,300));
-  const data = JSON.parse(txt);
-  const id = data.video_id || data.id || data.task_id;
-  if (!id) throw new Error("L'API n'a pas retourné de video_id");
-  return id;
+
+  const txt = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Creation vidéo HTTP ${response.status}: ${txt.slice(0, 1000)}`
+    );
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    throw new Error(
+      `Réponse Agnes invalide: ${txt.slice(0, 1000)}`
+    );
+  }
+
+  const videoId =
+    data.video_id ||
+    data.id;
+
+  if (!videoId) {
+    throw new Error(
+      `Agnes n'a pas retourné de video_id: ${JSON.stringify(data).slice(0, 1000)}`
+    );
+  }
+
+  console.log('[VIDEO CREATED]', videoId);
+
+  return videoId;
 }
 
-async function pollVideo(videoId, req){
-  const apiKeyToUse = getApiKeyForRequest(req) || process.env.AGNES_API_KEY || AGNES_API_KEY;
-  for(let attempt=0; attempt<120; attempt++){
-    const res = await fetch(API_BASE + '/videos/status?video_id='+encodeURIComponent(videoId)+'&model_name='+encodeURIComponent(MODEL_VIDEO), {
-      headers:{'Authorization':'Bearer '+ apiKeyToUse}
+
+async function pollVideo(videoId, req) {
+  const apiKeyToUse =
+    getApiKeyForRequest(req) ||
+    process.env.AGNES_API_KEY ||
+    AGNES_API_KEY;
+
+  if (!apiKeyToUse) {
+    throw new Error('AGNES_API_KEY non configurée');
+  }
+
+  const maxAttempts = 180;
+  const pollDelay = 5000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const url =
+      `${API_BASE.replace(/\/v1\/?$/, '')}` +
+      `/agnesapi?video_id=${encodeURIComponent(videoId)}` +
+      `&model_name=${encodeURIComponent(MODEL)}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKeyToUse}`
+      }
     });
-    const txt = await res.text();
-    if(!res.ok) throw new Error('Polling HTTP '+res.status+' — '+txt.slice(0,250));
-    const d = JSON.parse(txt);
-    const status = d.status || 'unknown';
-    if(['completed','succeeded','done'].includes(status)){
-      const url = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
-      if(!url) throw new Error('Vidéo terminée mais URL absente');
+
+    const txt = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Polling HTTP ${response.status}: ${txt.slice(0, 1000)}`
+      );
+    }
+
+    let data;
+
+    try {
+      data = JSON.parse(txt);
+    } catch {
+      throw new Error(
+        `Réponse polling Agnes invalide: ${txt.slice(0, 1000)}`
+      );
+    }
+
+    const status = String(data.status || '').toLowerCase();
+
+    console.log(
+      `[VIDEO POLL] ${videoId} → ${status || 'unknown'} ` +
+      `${data.progress != null ? data.progress + '%' : ''}`
+    );
+
+    if (
+      ['completed', 'succeeded', 'success', 'done'].includes(status)
+    ) {
+      const url =
+        data.url ||
+        data.video_url ||
+        data.output?.url ||
+        data.output?.video_url ||
+        data.data?.url;
+
+      if (!url) {
+        throw new Error(
+          `Vidéo terminée mais URL absente: ${JSON.stringify(data).slice(0, 1500)}`
+        );
+      }
+
       return url;
     }
-    if(['failed','error','cancelled'].includes(status)) throw new Error('Échec moteur vidéo: '+status);
-    await sleep(5000);
+
+    if (
+      ['failed', 'error', 'cancelled', 'canceled'].includes(status)
+    ) {
+      const errorMessage =
+        data.error?.message ||
+        data.error ||
+        data.message ||
+        status;
+
+      throw new Error(
+        `Échec moteur vidéo: ${errorMessage}`
+      );
+    }
+
+    await sleep(pollDelay);
   }
-  throw new Error('Délai maximal dépassé');
+
+  throw new Error(
+    `Délai maximal dépassé pour video_id=${videoId}`
+  );
+      
 }
 
 let workerBusy = false;
