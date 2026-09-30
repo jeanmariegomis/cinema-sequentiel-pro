@@ -1274,10 +1274,11 @@ function updateGenerateBtn() {
     if (!btn) return;
     const hasScenes = state.scenes.length > 0;
     const hasReference = !!state.initialRefDataUrl;
+    const hasKey = !!getApiKey();
     btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
-    } else if (!getApiKey()) {
+    } else if (!hasKey) {
         btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
         btn.textContent = '✂️ Découpez d\'abord votre scénario';
