@@ -22,14 +22,6 @@
   font-family: "Optimistic Mono", ui-monospace, monospace;
 }
 
-    #auth-gate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:1.2rem;background:rgba(7,7,12,.97);backdrop-filter:blur(12px)}
-    #auth-gate.hidden{display:none}
-    .auth-card{width:min(430px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,.55);color:#fff}
-    .auth-card h2{margin:0 0 .5rem;font-size:1.35rem}.auth-card p{margin:.35rem 0 1.1rem;color:#aaaabd;font-size:.88rem;line-height:1.45}
-    #auth-password{width:100%;box-sizing:border-box;padding:1rem;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:1rem;margin:.35rem 0 .75rem}
-    #auth-login-btn{width:100%;padding:1rem;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:1rem}
-    #auth-error{min-height:1.2em;color:#ff6b6b;font-size:.82rem;margin-top:.7rem}
-    body.auth-locked> :not(#auth-gate){visibility:hidden}
 </style><style>
 @font-face {
   font-family: "Optimistic";
@@ -522,19 +514,7 @@
     .debug-log .log-line.warn { color: #fa7; }
 </style>
 </head>
-<body class="auth-locked">
-<div id="auth-gate">
-  <div class="auth-card">
-    <div style="font-size:2rem;margin-bottom:.4rem">🔐</div>
-    <h2>Connexion privée</h2>
-    <p>Connecte-toi pour accéder à <strong>Cinéma Séquentiel Pro</strong>.</p>
-    <form id="auth-form">
-      <input id="auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
-      <button id="auth-login-btn" type="submit">🔓 Se connecter</button>
-      <div id="auth-error"></div>
-    </form>
-  </div>
-</div>
+<body>
 
 
 <div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
@@ -2129,6 +2109,7 @@ function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serve
     const gate = document.getElementById('private-login-gate');
     if (gate) gate.style.display = 'none';
     document.body.classList.add('private-authenticated');
+    if (typeof updateGenerateBtn === 'function') updateGenerateBtn();
   }
   async function login() {
     const input = document.getElementById('private-password');
