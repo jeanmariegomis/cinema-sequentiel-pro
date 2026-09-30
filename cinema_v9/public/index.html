@@ -21,6 +21,15 @@
 :where(code, pre, kbd, samp) {
   font-family: "Optimistic Mono", ui-monospace, monospace;
 }
+
+    #auth-gate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:1.2rem;background:rgba(7,7,12,.97);backdrop-filter:blur(12px)}
+    #auth-gate.hidden{display:none}
+    .auth-card{width:min(430px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,.55);color:#fff}
+    .auth-card h2{margin:0 0 .5rem;font-size:1.35rem}.auth-card p{margin:.35rem 0 1.1rem;color:#aaaabd;font-size:.88rem;line-height:1.45}
+    #auth-password{width:100%;box-sizing:border-box;padding:1rem;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:1rem;margin:.35rem 0 .75rem}
+    #auth-login-btn{width:100%;padding:1rem;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:1rem}
+    #auth-error{min-height:1.2em;color:#ff6b6b;font-size:.82rem;margin-top:.7rem}
+    body.auth-locked> :not(#auth-gate){visibility:hidden}
 </style><style>
 @font-face {
   font-family: "Optimistic";
@@ -513,7 +522,20 @@
     .debug-log .log-line.warn { color: #fa7; }
 </style>
 </head>
-<body>
+<body class="auth-locked">
+<div id="auth-gate">
+  <div class="auth-card">
+    <div style="font-size:2rem;margin-bottom:.4rem">🔐</div>
+    <h2>Connexion privée</h2>
+    <p>Connecte-toi pour accéder à <strong>Cinéma Séquentiel Pro</strong>.</p>
+    <form id="auth-form">
+      <input id="auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
+      <button id="auth-login-btn" type="submit">🔓 Se connecter</button>
+      <div id="auth-error"></div>
+    </form>
+  </div>
+</div>
+
 
 <div id="private-login-gate" style="position:fixed;inset:0;z-index:999999;background:#0b1020;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif;">
   <div style="width:min(420px,100%);background:#151b2e;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#fff;">
@@ -563,16 +585,18 @@
         <strong style="color:#10b981">Scène 2</strong> = dernière image de la Scène 1 (extraction auto corrigée)<br>
         <strong style="color:#8b5cf6">Scène 3+</strong> = dernière image de la scène précédente
     </div>
-    <div id="ref-upload-zone" style="border:3px dashed #fbbf24;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;background:#1c1c24;transition:.2s">
-        <div id="ref-placeholder" style="font-size:.9rem">
-            📁 <strong>Clique ici pour ajouter ton image de référence</strong><br>
-            <span style="font-size:.75rem;color:var(--ink-dim)">JPG, PNG, WEBP - Cette image sera le first frame de la Scène 1</span><br>
-            <span style="font-size:.7rem;color:#fbbf24;margin-top:.5rem;display:inline-block">Glisser-déposer possible</span>
-        </div>
-        <img id="ref-preview" style="display:none;max-width:100%;max-height:260px;border-radius:12px;margin:1rem auto 0;border:2px solid #fbbf24">
-        <div id="ref-info" style="display:none;font-size:.75rem;color:var(--ink-dim);margin-top:.8rem;background:rgba(0,0,0,.3);padding:.5rem;border-radius:8px"></div>
+    <div id="ref-upload-zone" style="position:relative;border:3px dashed #fbbf24;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;background:#1c1c24;transition:.2s;overflow:hidden">
+        <label for="ref-file-input" id="ref-upload-label" style="display:block;cursor:pointer;touch-action:manipulation;min-height:150px">
+            <div id="ref-placeholder" style="font-size:.9rem;pointer-events:none">
+                📁 <strong>Clique ici pour ajouter ton image de référence</strong><br>
+                <span style="font-size:.75rem;color:var(--ink-dim)">JPG, PNG, WEBP - Cette image sera le first frame de la Scène 1</span><br>
+                <span style="font-size:.7rem;color:#fbbf24;margin-top:.5rem;display:inline-block">Appuie ici pour choisir une image</span>
+            </div>
+            <img id="ref-preview" style="display:none;max-width:100%;max-height:260px;border-radius:12px;margin:1rem auto 0;border:2px solid #fbbf24;pointer-events:none">
+            <div id="ref-info" style="display:none;font-size:.75rem;color:var(--ink-dim);margin-top:.8rem;background:rgba(0,0,0,.3);padding:.5rem;border-radius:8px;pointer-events:none"></div>
+        </label>
+        <input type="file" id="ref-file-input" accept="image/jpeg,image/png,image/webp,image/*" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:20">
     </div>
-    <input type="file" id="ref-file-input" accept="image/*" style="display:none">
     <div style="display:flex;gap:.6rem;margin-top:.8rem">
         <button type="button" id="ref-clear-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--border);background:var(--panel-3);color:var(--ink);font-size:.8rem;display:none">🗑 Supprimer</button>
         <button type="button" id="ref-preview-btn" style="flex:1;padding:.8rem;border-radius:10px;border:1px solid var(--accent);background:rgba(139,92,246,.15);color:#c4b5fd;font-size:.8rem;display:none">👁️ Voir en grand</button>
@@ -1131,8 +1155,8 @@ function updateGenerateBtn() {
     const btn = document.getElementById('generate-btn');
     if (!btn) return;
     const hasScenes = state.scenes.length > 0;
-    const hasKey = !!getApiKey();
-    btn.disabled = !hasScenes || !hasKey || state.isRunning;
+    const hasReference = !!state.initialRefDataUrl;
+    btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
     } else if (!hasKey) {
@@ -1864,11 +1888,11 @@ async function startGeneration() {
     try {
         addLog('════ ENVOI AU SERVEUR V9.3 ════', 'info');
         addLog('Le serveur prend maintenant le relais : tu peux fermer Chrome après le lancement.', 'success');
-        const res = await fetch('/api/jobs, {headers: agnesHeaders(), method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        const res = await fetch('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(payload) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Impossible de créer la tâche serveur');
         const jobId = data.id;
-        localStorage.setItem('cinema_v9_job_id', jobId);
+        localStorage.setItem('cinema_v11_job_id', jobId);
         addLog('☁️ Job serveur créé : ' + jobId, 'success');
         showToast('🚀 Génération lancée côté serveur. Tu peux fermer Chrome.', 'success', 7000);
         await monitorServerJob(jobId);
@@ -1905,11 +1929,11 @@ async function monitorServerJob(jobId) {
         if (job.status === 'completed') {
             addLog('🎬 Job terminé côté serveur — toutes les scènes sont disponibles.', 'success');
             showToast('🎬 Toutes les scènes sont prêtes.', 'success', 6000);
-            localStorage.removeItem('cinema_v9_job_id');
+            localStorage.removeItem('cinema_v11_job_id');
             return;
         }
         if (job.status === 'failed' || job.status === 'cancelled') {
-            localStorage.removeItem('cinema_v9_job_id');
+            localStorage.removeItem('cinema_v11_job_id');
             throw new Error('Job '+job.status);
         }
         setStatus('☁️ Génération côté serveur — '+(job.completed||0)+'/'+(job.total||state.scenes.length)+' scène(s) terminée(s)');
@@ -1918,7 +1942,7 @@ async function monitorServerJob(jobId) {
 }
 
 async function resumeServerJobIfAny() {
-    const jobId = localStorage.getItem('cinema_v9_job_id');
+    const jobId = localStorage.getItem('cinema_v11_job_id');
     if (!jobId) return;
     try {
         addLog('☁️ Reprise automatique du job serveur '+jobId, 'info');
@@ -1970,11 +1994,21 @@ function setupRefImageHandlers(){
     };
 
     input.addEventListener('change', e=>{
-        const file = e.target.files[0];
+        const file = e.target.files && e.target.files[0];
+        addLog('Sélecteur image déclenché' + (file ? ' : '+file.name : ' : aucun fichier'), file ? 'info' : 'warn');
         if(!file) return;
         if(!file.type.startsWith('image/')){ showToast('Fichier non image', 'error'); return; }
+        if(file.size > 15 * 1024 * 1024){
+            showToast('Image trop lourde (maximum 15 Mo)', 'error');
+            addLog('Image refusée : taille > 15 Mo', 'error');
+            return;
+        }
         const reader = new FileReader();
         reader.onload = ev=> showPreview(ev.target.result, file);
+        reader.onerror = ()=> {
+            addLog('Erreur de lecture de l’image sur le téléphone', 'error');
+            showToast('Impossible de lire cette image', 'error');
+        };
         reader.readAsDataURL(file);
     });
 
@@ -2000,7 +2034,7 @@ function setupRefImageHandlers(){
         if(preview.src) window.open(preview.src, '_blank');
     });
 
-    zone.addEventListener('click', ()=> input.click());
+    // Android/Tecno: le sélecteur natif est déclenché par l'input réellement tactile.
     zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.borderColor='#8b5cf6'; zone.style.transform='scale(1.02)'; });
     zone.addEventListener('dragleave', e=>{ zone.style.borderColor='#fbbf24'; zone.style.transform='scale(1)'; });
     zone.addEventListener('drop', e=>{
