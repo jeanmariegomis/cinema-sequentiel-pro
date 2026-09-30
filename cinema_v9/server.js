@@ -162,10 +162,29 @@ setupPrivateAuthRoutes();
 // Do NOT expose /public/index.html before authentication.
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/auth/')) return next();
-  if (validAuthToken(getCookie(req, 'csp_auth'))) return next();
+
+  const authCookie = getCookie(req, 'csp_auth');
+  const authenticated = validAuthToken(authCookie);
+
+  console.log('===== PRIVATE GATE DEBUG =====');
+  console.log('Path:', req.path);
+  console.log('Cookie present:', Boolean(authCookie));
+  console.log('Cookie length:', authCookie.length);
+  console.log('Token valid:', authenticated);
+  console.log('AUTH_SECRET configured:', Boolean(process.env.AUTH_SECRET));
+  console.log('==============================');
+
+  if (authenticated) return next();
+
   if (req.path.startsWith('/api/')) {
-    return res.status(401).json({ ok:false, error:'AUTH_REQUIRED' });
+    return res.status(401).json({
+      ok: false,
+      error: 'AUTH_REQUIRED'
+    });
   }
+
+  console.log('PRIVATE GATE → REDIRECT /login.html');
+
   return res.redirect('/login.html');
 });
 
