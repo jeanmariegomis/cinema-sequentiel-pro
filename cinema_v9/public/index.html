@@ -1,34 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-<script>
-/* ===== DEBUG PERSISTANT AUTH / DEMARRAGE ===== */
-(function(){
-  const KEY='csp_auth_debug_v1';
-  const MAX=200;
-  function safe(v){
-    try{return typeof v==='string'?v:JSON.stringify(v);}catch(_){return String(v);}
-  }
-  function save(level,msg){
-    try{
-      const logs=JSON.parse(localStorage.getItem(KEY)||'[]');
-      logs.push({time:new Date().toLocaleTimeString(),level:level,message:String(msg).slice(0,1200)});
-      while(logs.length>MAX) logs.shift();
-      localStorage.setItem(KEY,JSON.stringify(logs));
-    }catch(_){ }
-  }
-  window.__CSP_DEBUG_SAVE=save;
-  window.__CSP_DEBUG_GET=function(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(_){return[]}};
-  window.__CSP_DEBUG_CLEAR=function(){try{localStorage.removeItem(KEY)}catch(_){} };
-  const oldError=console.error.bind(console), oldWarn=console.warn.bind(console), oldLog=console.log.bind(console);
-  console.error=function(){save('error',Array.from(arguments).map(safe).join(' '));oldError.apply(console,arguments)};
-  console.warn=function(){save('warn',Array.from(arguments).map(safe).join(' '));oldWarn.apply(console,arguments)};
-  window.addEventListener('error',function(e){save('error','JS ERROR: '+(e.message||'Erreur inconnue')+' | '+(e.filename||'')+':'+(e.lineno||''));});
-  window.addEventListener('unhandledrejection',function(e){save('error','PROMISE REJECTION: '+safe(e.reason));});
-  save('info','Application index.html chargée');
-})();
-</script>
-<style>
+<head><style>
 @font-face {
   font-family: "Optimistic";
   font-style: normal;
@@ -542,137 +514,25 @@
     .debug-log .log-line.warn { color: #fa7; }
 </style>
 
-<style id="csp-auth-gate-style">
-  #csp-auth-gate{position:fixed;inset:0;z-index:2000000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(7,7,12,.98);backdrop-filter:blur(14px);overflow:auto}
-  #csp-auth-gate.hidden{display:none}
-  .csp-auth-card{width:min(440px,94vw);background:#17171f;border:1px solid #343445;border-radius:22px;padding:26px;box-shadow:0 22px 70px rgba(0,0,0,.6);color:#fff}
-  .csp-auth-logo{font-size:38px;margin-bottom:8px}.csp-auth-title{font-size:25px;font-weight:800;margin-bottom:7px}.csp-auth-sub{color:#a9a9b8;line-height:1.45;margin-bottom:20px}
-  #csp-auth-password{width:100%;padding:14px;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:16px;outline:none;box-sizing:border-box}
-  #csp-auth-password:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.15)}
-  #csp-auth-login{width:100%;padding:14px;margin-top:14px;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:16px}
-  #csp-auth-login:disabled{opacity:.6}
-  #csp-auth-error{min-height:22px;margin-top:12px;color:#ff7777;font-size:14px}
-  #csp-auth-debug{margin-top:18px;border:1px solid #343445;border-radius:12px;background:#090b12;overflow:hidden}
-  #csp-auth-debug-head{padding:9px 11px;display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #343445;font-size:12px;font-weight:800}
-  #csp-auth-debug-lines{max-height:180px;overflow:auto;padding:9px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
-  .csp-dbg-line{margin-bottom:4px;white-space:pre-wrap;word-break:break-word}.csp-dbg-info{color:#7fb8ff}.csp-dbg-error{color:#ff7777}.csp-dbg-warn{color:#ffbd66}.csp-dbg-success{color:#7ee787}
+<style id="auth-guard-style">
+body.auth-checking > :not(#auth-loading){visibility:hidden!important;}
+#auth-loading{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:#09090f;color:#fff;padding:20px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;}
+#auth-loading .auth-loading-card{width:min(420px,94vw);background:#17171f;border:1px solid #343445;border-radius:20px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.55);}
+#auth-loading .auth-spinner{width:28px;height:28px;margin:0 auto 14px;border:3px solid rgba(139,92,246,.25);border-top-color:#8b5cf6;border-radius:50%;animation:authspin .8s linear infinite;}
+@keyframes authspin{to{transform:rotate(360deg)}}
 </style>
 </head>
-<body>
-<div id="csp-auth-gate">
-  <div class="csp-auth-card">
-    <div class="csp-auth-logo">🔐</div>
-    <div class="csp-auth-title">Connexion privée</div>
-    <div class="csp-auth-sub">Connecte-toi pour accéder à <strong>Cinéma Séquentiel Pro</strong>.</div>
-    <form id="csp-auth-form">
-      <input id="csp-auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required autofocus>
-      <button id="csp-auth-login" type="submit">🔓 Se connecter</button>
-      <div id="csp-auth-error"></div>
-    </form>
-    <div id="csp-auth-debug">
-      <div id="csp-auth-debug-head"><span>🛠️ Console Auth</span><span id="csp-auth-state">Initialisation…</span></div>
-      <div id="csp-auth-debug-lines"></div>
-    </div>
-  </div>
-</div>
-<script>
-(function(){
-  const KEY='csp_auth_debug_v1';
-  const gate=document.getElementById('csp-auth-gate');
-  const form=document.getElementById('csp-auth-form');
-  const input=document.getElementById('csp-auth-password');
-  const btn=document.getElementById('csp-auth-login');
-  const error=document.getElementById('csp-auth-error');
-  const lines=document.getElementById('csp-auth-debug-lines');
-  const state=document.getElementById('csp-auth-state');
-  function logs(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(_){return[]}}
-  function draw(){
-    const a=logs().slice(-60);
-    lines.innerHTML=a.map(x=>{const c=x.level==='error'?'csp-dbg-error':x.level==='warn'?'csp-dbg-warn':x.level==='success'?'csp-dbg-success':'csp-dbg-info';return '<div class="csp-dbg-line '+c+'">['+x.time+'] '+String(x.level).toUpperCase()+' — '+String(x.message).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>'}).join('');
-    lines.scrollTop=lines.scrollHeight;
-  }
-  function log(level,msg){try{window.__CSP_DEBUG_SAVE?.(level,msg)}catch(_){} draw()}
-  function unlock(){gate.classList.add('hidden');document.documentElement.dataset.authenticated='true';state.textContent='CONNECTÉ';log('success','Session validée — application déverrouillée')}
-  async function status(){
-    log('info','Vérification de /api/auth/status...');
-    try{
-      const r=await fetch('/api/auth/status',{credentials:'include',cache:'no-store'});
-      log('info','/api/auth/status → HTTP '+r.status);
-      const data=await r.json();
-      log('info','authenticated = '+String(!!data.authenticated));
-      if(data.authenticated){unlock();return true}
-      state.textContent='NON CONNECTÉ';
-      log('warn','Aucune session valide — attente du mot de passe');
-      return false;
-    }catch(e){
-      state.textContent='ERREUR';
-      log('error','Erreur /api/auth/status: '+(e.message||String(e)));
-      return false;
-    }
-  }
-  form.addEventListener('submit',async function(e){
-    e.preventDefault();
-    error.textContent=''; btn.disabled=true; btn.textContent='Connexion…';
-    log('info','Tentative de connexion...');
-    try{
-      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
-      log('info','POST /api/auth/login → HTTP '+r.status);
-      const data=await r.json().catch(()=>({}));
-      if(r.ok && data.ok){
-        input.value='';
-        log('success','Authentification serveur réussie — vérification de session');
-        const ok=await status();
-        if(!ok) error.textContent='Le serveur accepte le mot de passe mais la session n’est pas conservée.';
-      }else{
-        log('error','Connexion refusée: '+(data.error||'mot de passe incorrect'));
-        error.textContent=data.error==='AUTH_NOT_CONFIGURED'?'Authentification non configurée sur Render.':'Mot de passe incorrect.';
-        input.value=''; input.focus();
-      }
-    }catch(e){
-      log('error','Erreur connexion: '+(e.message||String(e)));
-      error.textContent='Serveur inaccessible.';
-    }finally{btn.disabled=false;btn.textContent='🔓 Se connecter';}
-  });
-  draw();
-  status();
-})();
-</script>
+<body class="auth-checking">
+<style id="logout-visible-fix">#logout-btn{position:fixed!important;top:12px!important;right:12px!important;z-index:2147483647!important;display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;align-items:center;justify-content:center;padding:.65rem .9rem!important;border:1px solid #34343f!important;border-radius:9px!important;background:#14141a!important;color:#fff!important;font-weight:800!important;cursor:pointer!important;box-shadow:0 6px 20px rgba(0,0,0,.35)!important}</style>
 
-<!-- AUTH ARCHITECTURE:
-     This / route is protected by the Render/server private gate.
-     index.html must NOT implement a second client-side login gate.
-     The authenticated cookie is validated by the server before this file is served.
--->
-<div id="csp-persistent-debug" style="position:fixed;left:10px;right:10px;bottom:10px;z-index:1000000;background:#090b12;color:#fff;border:1px solid #343a52;border-radius:12px;padding:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);font-family:ui-monospace,monospace;font-size:12px;display:none;max-height:42vh;overflow:auto;">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-    <strong>🛠️ DEBUG PERSISTANT — AUTH / DÉMARRAGE</strong>
-    <div style="display:flex;gap:6px;"><button id="csp-debug-clear" type="button" style="padding:5px 8px;border:0;border-radius:6px;">Effacer</button><button id="csp-debug-close" type="button" style="padding:5px 8px;border:0;border-radius:6px;">Masquer</button></div>
+<div id="auth-loading" aria-live="polite">
+  <div class="auth-loading-card">
+    <div class="auth-spinner"></div>
+    <strong>Vérification de la session…</strong>
+    <div style="margin-top:8px;color:#aaaabd;font-size:.82rem">Connexion sécurisée à Cinéma Séquentiel Pro</div>
   </div>
-  <div id="csp-debug-lines"></div>
 </div>
-<script>
-(function(){
-  function render(){
-    const box=document.getElementById('csp-persistent-debug');
-    const lines=document.getElementById('csp-debug-lines');
-    if(!box||!lines||!window.__CSP_DEBUG_GET)return;
-    const logs=window.__CSP_DEBUG_GET();
-    if(!logs.length){box.style.display='none';return;}
-    box.style.display='block';
-    lines.innerHTML=logs.map(x=>{
-      const c=x.level==='error'?'#ff7777':x.level==='warn'?'#ffbd66':'#7fb8ff';
-      return '<div style="color:'+c+';padding:2px 0;white-space:pre-wrap;word-break:break-word">['+x.time+'] '+x.level.toUpperCase()+' — '+String(x.message).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
-    }).join('');
-    lines.scrollTop=lines.scrollHeight;
-  }
-  document.addEventListener('DOMContentLoaded',function(){
-    document.getElementById('csp-debug-clear')?.addEventListener('click',function(){window.__CSP_DEBUG_CLEAR();render();});
-    document.getElementById('csp-debug-close')?.addEventListener('click',function(){document.getElementById('csp-persistent-debug').style.display='none';});
-    render();
-  });
-  window.setTimeout(render,500);
-})();
-</script>
+
 
 <!-- 🔒 API masquée - sécurisée dans Render Environment AGNES_API_KEY -->
 <div class="info-banner" style="border-color:#10b981; background: rgba(16,185,129,0.08);">
@@ -683,6 +543,7 @@
 <header>
     <h1>Cinéma Séquentiel Pro v6</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
+    <button id="logout-btn" type="button" style="margin-top:.8rem;padding:.55rem .9rem;border:1px solid #34343f;border-radius:9px;background:#14141a;color:#aaaabd;font-weight:700;cursor:pointer">🔓 Se déconnecter</button>
 </header>
 
 <div class="info-banner">
@@ -962,6 +823,16 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js" crossorigin="anonymous"></script>
 
+
+<script id="logout-script">
+document.addEventListener('DOMContentLoaded',function(){
+  document.getElementById('logout-btn')?.addEventListener('click',async function(){
+    this.disabled=true;
+    try{ await fetch('/api/auth/logout',{method:'POST',credentials:'include',cache:'no-store'}); }catch(e){}
+    location.replace('/login.html');
+  });
+});
+</script>
 <script>
 // ══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -1274,14 +1145,13 @@ function updateGenerateBtn() {
     if (!btn) return;
     const hasScenes = state.scenes.length > 0;
     const hasReference = !!state.initialRefDataUrl;
-    const hasKey = !!getApiKey();
     btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
-    } else if (!hasKey) {
-        btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
         btn.textContent = '✂️ Découpez d\'abord votre scénario';
+    } else if (!hasReference) {
+        btn.textContent = '🖼️ Ajoutez l\'image de référence';
     } else {
         const durSec = (state.durationFrames / FRAME_RATE).toFixed(1);
         btn.textContent = '🎬 Générer le plan séquence — ' + state.scenes.length + ' scènes × ' + durSec + 's';
@@ -2245,11 +2115,46 @@ function setupRefImageHandlers(){
 })();
 </script>
 
+
+<script id="auth-guard-script">
+(function(){
+  const loading = document.getElementById('auth-loading');
+  let redirected = false;
+  function logAuth(message,type){
+    if(typeof addLog === 'function') addLog('AUTH: '+message,type||'info');
+  }
+  function showApp(){
+    document.body.classList.remove('auth-checking');
+    if(loading) loading.remove();
+    logAuth('Session valide — application déverrouillée','success');
+  }
+  function goLogin(){
+    if(redirected) return;
+    redirected = true;
+    logAuth('Session absente — redirection vers /login.html','warn');
+    location.replace('/login.html?next=/');
+  }
+  async function check(){
+    try{
+      const r=await fetch('/api/auth/status',{method:'GET',credentials:'include',cache:'no-store',headers:{'Accept':'application/json'}});
+      const data=await r.json().catch(()=>({}));
+      logAuth('/api/auth/status → HTTP '+r.status+' · authenticated='+!!data.authenticated,data.authenticated?'success':'warn');
+      if(r.ok && data.authenticated){ showApp(); } else { goLogin(); }
+    }catch(e){
+      logAuth('Erreur de vérification : '+e.message,'error');
+      goLogin();
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',check,{once:true});
+  else check();
+})();
+</script>
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script>
 <script>
 function getAgnesApiKey(){ return ''; /* clé dans Render AGNES_API_KEY */ }
 function agnesHeaders(extra = {}){ return Object.assign({}, extra, {}); /* serveur utilise process.env.AGNES_API_KEY */ }
 </script>
+
 
 
 <script>(function(){var loc=location.href.replace(/#.*$/,"");var ATTR_NAMES=["data-product-id","data-productid","data-product_id","product-id","productid","product_id","data-source-entity-id","source-entity-id","source_entity_id","data-product","data-metadata","data-meta"];var DATASET_KEYS=["productId","productid","product_id","sourceEntityId","sourceentityid","source_entity_id","product","metadata","meta"];function readProductId(value){if(typeof value!=="string"||value.length===0)return null;if(/^[0-9]{6,}$/.test(value))return value;var match=value.match(/(?:product(?:_|-)?id|source(?:_|-)?entity(?:_|-)?id)["'=:\s]+([0-9]{6,})/i);return match?match[1]:null}function extractProductId(start){for(var node=start;node&&node!==document.body;node=node.parentElement){for(var i=0;i<ATTR_NAMES.length;i++){var attrValue=node.getAttribute&&node.getAttribute(ATTR_NAMES[i]);var attrProductId=readProductId(attrValue);if(attrProductId)return attrProductId}var dataset=node.dataset||null;if(dataset){for(var j=0;j<DATASET_KEYS.length;j++){var dataValue=dataset[DATASET_KEYS[j]];var dataProductId=readProductId(dataValue);if(dataProductId)return dataProductId}}}return null}function isInlineMediaSlotElement(node){return !!(node&&node.getAttribute&&node.getAttribute("data-clippy-inline-media-slot")!==null)}function findInlineMediaSlot(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(isInlineMediaSlotElement(node))return node}return null}function readInlineMediaUrl(node){if(!node)return null;return node.getAttribute&&((node.getAttribute("data-clippy-inline-media-url")||node.getAttribute("data-url")||node.getAttribute("data_url")))||node.href||null}function stripHash(url){return String(url).replace(/#.*$/,"")}function urlsMatch(a,b){if(!a||!b)return false;try{return stripHash(new URL(a,loc).href)===stripHash(new URL(b,loc).href)}catch(_){return stripHash(a)===stripHash(b)}}function isFirstPartyReelUrl(value){try{var url=new URL(value,loc);if(url.protocol!=="https:")return false;var host=url.hostname.toLowerCase();var supported=host==="instagram.com"||host.endsWith(".instagram.com")||host==="facebook.com"||host.endsWith(".facebook.com");return supported&&/\/reels?\//i.test(url.pathname)}catch(_){return false}}function isInlineMediaUrlClick(node,href){var slot=findInlineMediaSlot(node);if(!slot)return false;var slotUrl=readInlineMediaUrl(slot);if(slotUrl)return urlsMatch(href,slotUrl);return isFirstPartyReelUrl(href)}function findDataHref(start){for(var node=start;node&&node!==document.body;node=node.parentElement){if(node.getAttribute){var href=node.getAttribute("data-href")||node.getAttribute("data-url");if(href)return{href:href,node:node}}}return null}var nativeOpen=window.open;window.open=function(url){if(parent!==window&&typeof url==="string"&&/^https?:\/\//.test(url)){parent.postMessage({type:"ecto:usercontent-link-click",href:url},"*");return null}return nativeOpen?nativeOpen.apply(window,arguments):null};document.addEventListener("click",function(e){var target=e.target instanceof Element?e.target:null;if(!target)return;if(parent===window)return;var a=target.closest?target.closest("a[href]"):null;if(a&&a.href&&/^https?:\/\//.test(a.href)&&a.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(a,a.href))return;var productId=extractProductId(target)||extractProductId(a);if(productId){e.preventDefault();parent.postMessage({type:"ecto-artifact-link-click",productId:productId},"*");return}e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:a.href},"*");return}var dataHref=findDataHref(target);if(dataHref&&/^https?:\/\//.test(dataHref.href)&&dataHref.href.replace(/#.*$/,"")!==loc){if(isInlineMediaUrlClick(dataHref.node,dataHref.href))return;e.preventDefault();parent.postMessage({type:"ecto:usercontent-link-click",href:dataHref.href},"*")}},true)})();</script><script>(function(){var FOCUS_TYPE="ecto:artifact-focus-request";var CLOSE_TYPE="ecto:artifact-close-request";function focusArtifactDocument(){var body=document.body;if(!body)return;try{window.focus();}catch(e){}if(!body.hasAttribute("tabindex"))body.setAttribute("tabindex","-1");try{body.focus({preventScroll:true});}catch(e){try{body.focus();}catch(e2){}}}window.addEventListener("message",function(event){if(event.source!==window.parent)return;var data=event.data;if(!data||typeof data!=="object"||data.type!==FOCUS_TYPE)return;if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",focusArtifactDocument,{once:true});return;}focusArtifactDocument();});window.addEventListener("keydown",function(event){if(event.key!=="Escape")return;window.setTimeout(function(){if(event.defaultPrevented)return;window.parent.postMessage({type:CLOSE_TYPE},"*");},0);});})();</script></body>
