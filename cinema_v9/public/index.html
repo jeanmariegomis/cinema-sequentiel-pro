@@ -541,8 +541,103 @@
     .debug-log .log-line.info { color: #7af; }
     .debug-log .log-line.warn { color: #fa7; }
 </style>
+
+<style id="csp-auth-gate-style">
+  #csp-auth-gate{position:fixed;inset:0;z-index:2000000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(7,7,12,.98);backdrop-filter:blur(14px);overflow:auto}
+  #csp-auth-gate.hidden{display:none}
+  .csp-auth-card{width:min(440px,94vw);background:#17171f;border:1px solid #343445;border-radius:22px;padding:26px;box-shadow:0 22px 70px rgba(0,0,0,.6);color:#fff}
+  .csp-auth-logo{font-size:38px;margin-bottom:8px}.csp-auth-title{font-size:25px;font-weight:800;margin-bottom:7px}.csp-auth-sub{color:#a9a9b8;line-height:1.45;margin-bottom:20px}
+  #csp-auth-password{width:100%;padding:14px;border-radius:11px;border:1px solid #3a3a4d;background:#0f0f16;color:#fff;font-size:16px;outline:none;box-sizing:border-box}
+  #csp-auth-password:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.15)}
+  #csp-auth-login{width:100%;padding:14px;margin-top:14px;border:0;border-radius:11px;background:linear-gradient(120deg,#8b5cf6,#6d4de6);color:#fff;font-weight:800;font-size:16px}
+  #csp-auth-login:disabled{opacity:.6}
+  #csp-auth-error{min-height:22px;margin-top:12px;color:#ff7777;font-size:14px}
+  #csp-auth-debug{margin-top:18px;border:1px solid #343445;border-radius:12px;background:#090b12;overflow:hidden}
+  #csp-auth-debug-head{padding:9px 11px;display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #343445;font-size:12px;font-weight:800}
+  #csp-auth-debug-lines{max-height:180px;overflow:auto;padding:9px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+  .csp-dbg-line{margin-bottom:4px;white-space:pre-wrap;word-break:break-word}.csp-dbg-info{color:#7fb8ff}.csp-dbg-error{color:#ff7777}.csp-dbg-warn{color:#ffbd66}.csp-dbg-success{color:#7ee787}
+</style>
 </head>
 <body>
+<div id="csp-auth-gate">
+  <div class="csp-auth-card">
+    <div class="csp-auth-logo">🔐</div>
+    <div class="csp-auth-title">Connexion privée</div>
+    <div class="csp-auth-sub">Connecte-toi pour accéder à <strong>Cinéma Séquentiel Pro</strong>.</div>
+    <form id="csp-auth-form">
+      <input id="csp-auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required autofocus>
+      <button id="csp-auth-login" type="submit">🔓 Se connecter</button>
+      <div id="csp-auth-error"></div>
+    </form>
+    <div id="csp-auth-debug">
+      <div id="csp-auth-debug-head"><span>🛠️ Console Auth</span><span id="csp-auth-state">Initialisation…</span></div>
+      <div id="csp-auth-debug-lines"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const KEY='csp_auth_debug_v1';
+  const gate=document.getElementById('csp-auth-gate');
+  const form=document.getElementById('csp-auth-form');
+  const input=document.getElementById('csp-auth-password');
+  const btn=document.getElementById('csp-auth-login');
+  const error=document.getElementById('csp-auth-error');
+  const lines=document.getElementById('csp-auth-debug-lines');
+  const state=document.getElementById('csp-auth-state');
+  function logs(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(_){return[]}}
+  function draw(){
+    const a=logs().slice(-60);
+    lines.innerHTML=a.map(x=>{const c=x.level==='error'?'csp-dbg-error':x.level==='warn'?'csp-dbg-warn':x.level==='success'?'csp-dbg-success':'csp-dbg-info';return '<div class="csp-dbg-line '+c+'">['+x.time+'] '+String(x.level).toUpperCase()+' — '+String(x.message).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>'}).join('');
+    lines.scrollTop=lines.scrollHeight;
+  }
+  function log(level,msg){try{window.__CSP_DEBUG_SAVE?.(level,msg)}catch(_){} draw()}
+  function unlock(){gate.classList.add('hidden');document.documentElement.dataset.authenticated='true';state.textContent='CONNECTÉ';log('success','Session validée — application déverrouillée')}
+  async function status(){
+    log('info','Vérification de /api/auth/status...');
+    try{
+      const r=await fetch('/api/auth/status',{credentials:'include',cache:'no-store'});
+      log('info','/api/auth/status → HTTP '+r.status);
+      const data=await r.json();
+      log('info','authenticated = '+String(!!data.authenticated));
+      if(data.authenticated){unlock();return true}
+      state.textContent='NON CONNECTÉ';
+      log('warn','Aucune session valide — attente du mot de passe');
+      return false;
+    }catch(e){
+      state.textContent='ERREUR';
+      log('error','Erreur /api/auth/status: '+(e.message||String(e)));
+      return false;
+    }
+  }
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();
+    error.textContent=''; btn.disabled=true; btn.textContent='Connexion…';
+    log('info','Tentative de connexion...');
+    try{
+      const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:input.value})});
+      log('info','POST /api/auth/login → HTTP '+r.status);
+      const data=await r.json().catch(()=>({}));
+      if(r.ok && data.ok){
+        input.value='';
+        log('success','Authentification serveur réussie — vérification de session');
+        const ok=await status();
+        if(!ok) error.textContent='Le serveur accepte le mot de passe mais la session n’est pas conservée.';
+      }else{
+        log('error','Connexion refusée: '+(data.error||'mot de passe incorrect'));
+        error.textContent=data.error==='AUTH_NOT_CONFIGURED'?'Authentification non configurée sur Render.':'Mot de passe incorrect.';
+        input.value=''; input.focus();
+      }
+    }catch(e){
+      log('error','Erreur connexion: '+(e.message||String(e)));
+      error.textContent='Serveur inaccessible.';
+    }finally{btn.disabled=false;btn.textContent='🔓 Se connecter';}
+  });
+  draw();
+  status();
+})();
+</script>
+
 <!-- AUTH ARCHITECTURE:
      This / route is protected by the Render/server private gate.
      index.html must NOT implement a second client-side login gate.
@@ -1182,7 +1277,7 @@ function updateGenerateBtn() {
     btn.disabled = !hasScenes || !hasReference || state.isRunning;
     if (state.isRunning) {
         btn.textContent = '🎬 Génération… (' + (state.completed + state.failed) + '/' + state.scenes.length + ')';
-    } else if (!hasKey) {
+    } else if (!getApiKey()) {
         btn.textContent = '🔑 Ajoutez votre clé API';
     } else if (!hasScenes) {
         btn.textContent = '✂️ Découpez d\'abord votre scénario';
