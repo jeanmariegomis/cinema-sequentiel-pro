@@ -1095,10 +1095,12 @@ const seconds =
   let primaryError = null;
 
   const queueRetryDelays = [
-    15000,
-    30000,
-    45000
-  ];
+  30000,
+  60000,
+  90000,
+  120000,
+  180000
+];
   const rateLimitRetryDelays = [
   60000,
   120000,
