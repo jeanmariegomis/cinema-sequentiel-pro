@@ -1251,20 +1251,75 @@ function renderQueue() {
     if (!state.scenes.length) { queueEl.classList.add('hidden'); return; }
     queueEl.classList.remove('hidden');
     const total = state.scenes.length;
-    const done = state.completed + state.failed;
-    const inProgress = state.scenes.filter(s => s.status === 'processing').length;
-    const pending = total - done - inProgress;
-    const estGen = estimateGenerationTime(state.durationFrames) / 1000;
-    const eta = pending > 0
-        ? (pending * (createIntervalMs / 1000)) + estGen
-        : (inProgress * estGen / Math.max(inProgress, 1));
-    const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
+const completed = state.completed;
+const failed = state.failed;
+const processed = completed + failed;
 
-    let html = '<div class="queue-summary">' +
-        '<span class="progress-text">Progression : ' + done + '/' + total + ' (' + progressPct + '%)</span>' +
-        '<span class="eta-text">' + (done < total ? '≈ ' + formatEta(eta) + ' restant' : '✓ Terminé') + '</span>' +
-        '<div class="progress-bar"><div class="progress-bar-fill" style="width:' + progressPct + '%"></div></div>' +
-        '</div>';
+const inProgress = state.scenes.filter(
+    s => s.status === 'processing'
+).length;
+
+const pending = Math.max(
+    0,
+    total - processed - inProgress
+);
+
+const estGen =
+    estimateGenerationTime(state.durationFrames) / 1000;
+
+const eta = pending > 0
+    ? (pending * (createIntervalMs / 1000)) + estGen
+    : (inProgress * estGen / Math.max(inProgress, 1));
+
+const progressPct =
+    total > 0
+        ? Math.round((completed / total) * 100)
+        : 0;
+
+let progressLabel =
+    'Progression : ' +
+    completed +
+    '/' +
+    total +
+    ' (' +
+    progressPct +
+    '%)';
+
+if (failed > 0) {
+    progressLabel +=
+        ' · ' +
+        failed +
+        ' échec' +
+        (failed > 1 ? 's' : '');
+}
+
+let etaLabel;
+
+if (pending > 0 || inProgress > 0) {
+    etaLabel = '≈ ' + formatEta(eta) + ' restant';
+} else if (failed > 0) {
+    etaLabel =
+        '⚠ ' +
+        failed +
+        ' échec' +
+        (failed > 1 ? 's' : '');
+} else {
+    etaLabel = '✓ Terminé';
+}
+
+let html = '<div class="queue-summary">' +
+    '<span class="progress-text">' +
+        progressLabel +
+    '</span>' +
+    '<span class="eta-text">' +
+        etaLabel +
+    '</span>' +
+    '<div class="progress-bar">' +
+        '<div class="progress-bar-fill" style="width:' +
+        progressPct +
+        '%"></div>' +
+    '</div>' +
+    '</div>';
 
     html += state.scenes.map((s, i) => {
         let icon = '○', statusText = 'En attente', cls = 'pending';
