@@ -1532,10 +1532,21 @@ async function monitorServerJob(jobId) {
         });
         renderScenes(); renderQueue();
         if (job.status === 'completed') {
-            addLog('🎬 Job terminé côté serveur — toutes les scènes sont disponibles.', 'success');
-            showToast('🎬 Toutes les scènes sont prêtes.', 'success', 6000);
-            localStorage.removeItem('cinema_v11_job_id');
-            return;
+    state.completed = job.total || state.scenes.length;
+    state.failed = 0;
+    renderScenes();
+    renderQueue();
+    setStatus(
+        '☁️ Génération côté serveur — ' +
+        state.completed +
+        '/' +
+        state.scenes.length +
+        ' scène(s) terminée(s)'
+    );
+    addLog('🎬 Job terminé côté serveur — toutes les scènes sont disponibles.', 'success');
+    showToast('🎬 Toutes les scènes sont prêtes.', 'success', 6000);
+    localStorage.removeItem('cinema_v11_job_id');
+    return;
         }
       if (job.status === 'failed' || job.status === 'cancelled') {
     localStorage.removeItem('cinema_v11_job_id');
