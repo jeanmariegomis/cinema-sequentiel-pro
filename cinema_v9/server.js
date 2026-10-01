@@ -1008,6 +1008,7 @@ async function createVideoTask(
       })
     );
 
+    const createStartedAt = Date.now();
     const response =
       await fetch(
         `${API_BASE}/videos`,
@@ -1033,6 +1034,9 @@ async function createVideoTask(
 
     const txt =
       await response.text();
+      console.log(
+  `[VIDEO TIMING] Création API ${label}: ${((Date.now() - createStartedAt) / 1000).toFixed(1)}s`
+);
 
     if (!response.ok) {
 
@@ -1344,6 +1348,8 @@ async function pollVideo(
   req,
   model = MODEL
 ) {
+    const pollStartedAt = Date.now();
+  let pollAttempts = 0;
 
   const apiKeyToUse =
     getApiKeyForRequest(req) ||
@@ -1368,7 +1374,7 @@ async function pollVideo(
     attempt < maxAttempts;
     attempt++
   ) {
-
+    pollAttempts++;
     const url =
       `${API_BASE.replace(
         /\/v1\/?$/,
@@ -1470,7 +1476,11 @@ async function pollVideo(
         );
       }
 
-      return videoUrl;
+      console.log(
+  `[VIDEO TIMING] Polling ${videoId}: ${((Date.now() - pollStartedAt) / 1000).toFixed(1)}s, ${pollAttempts} requêtes`
+);
+
+return videoUrl;
     }
 
     // ========================================================
