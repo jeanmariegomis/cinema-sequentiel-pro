@@ -1482,10 +1482,24 @@ async function monitorServerJob(jobId) {
             localStorage.removeItem('cinema_v11_job_id');
             return;
         }
-        if (job.status === 'failed' || job.status === 'cancelled') {
-            localStorage.removeItem('cinema_v11_job_id');
-            throw new Error('Job '+job.status);
-        }
+      if (job.status === 'failed' || job.status === 'cancelled') {
+    localStorage.removeItem('cinema_v11_job_id');
+
+    const failedScene = (job.scenes || []).find(
+        scene => scene.status === 'failed' && scene.error
+    );
+
+    const errorMessage =
+        failedScene?.error ||
+        job.error ||
+        (job.status === 'cancelled'
+            ? 'Génération annulée.'
+            : 'Une erreur est survenue pendant la génération.');
+
+    throw new Error(errorMessage);
+      }
+        
+        
         setStatus('☁️ Génération côté serveur — '+(job.completed||0)+'/'+(job.total||state.scenes.length)+' scène(s) terminée(s)');
         await sleep(5000);
     }
