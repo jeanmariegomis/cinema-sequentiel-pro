@@ -825,7 +825,7 @@ async function createVideoTask(
     Math.max(
       4,
       Math.min(
-        12,
+        20,
         Math.round(
           rawSeconds
         )
@@ -1140,7 +1140,7 @@ async function createVideoTask(
       ) {
 
         throw new Error(
-          `Limite API Agnes atteinte (HTTP 429). ${message}`
+          `Limite API gratuite atteinte, veuillez réessayer plus tard.`
         );
       }
 
@@ -1219,7 +1219,7 @@ async function createVideoTask(
   ) {
 
     throw new Error(
-      `Limite API Agnes atteinte. ${primaryMessage}`
+      `Limite API gratuite atteinte, veuillez réessayer plus tard.`
     );
   }
 
@@ -1325,7 +1325,7 @@ async function createVideoTask(
     ) {
 
       throw new Error(
-        `Limite API Agnes atteinte. Primaire: ${primaryMessage.slice(0, 700)} | Fallback: ${fallbackMessage.slice(0, 700)}`
+        `Limite API gratuite atteinte, veuillez réessayer plus tard.`
       );
     }
 
