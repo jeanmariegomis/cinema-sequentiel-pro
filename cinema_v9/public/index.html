@@ -716,7 +716,7 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
                         <div class="ro-label">~6 s</div>
                         <div class="ro-desc">144 f</div>
                     </div>
-                    <div class="radio-option selected" data-frames="192">
+                    <div class="radio-option" data-frames="192">
                         <div class="ro-label">~8 s</div>
                         <div class="ro-desc">192 f · recommandé</div>
                     </div>
@@ -724,13 +724,13 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
                         <div class="ro-label">~10 s</div>
                         <div class="ro-desc">240 f</div>
                     </div>
-                    <div class="radio-option" data-frames="288">
-                        <div class="ro-label">~12 s</div>
-                        <div class="ro-desc">288 f · maximum API</div>
+                    <div class="radio-option selected" data-frames="480">
+    <div class="ro-label">~20 s</div>
+    <div class="ro-desc">480 f · maximum autorisé</div>
                     </div>
                 </div>
                 <div class="storyboard-hint" style="margin-top:0.6rem;">
-                    ℹ️ Agnes Video 2.5 Flash accepte les scènes de <strong>4 à 12 secondes</strong>. Les durées proposées ici respectent directement la limite de l’API.
+                    ℹ️ Agnes Video 2.5 Flash accepte les scènes de <strong>4 à 20 secondes</strong>. Les durées proposées ici respectent directement la limite de l’API.
                 </div>
             </div>
             <div class="control-row">
@@ -1071,7 +1071,7 @@ const state = {
     stopRequested: false,
     completed: 0,
     failed: 0,
-    durationFrames: 192,
+    durationFrames: 480,
     quality: 'anime3d',
     motion: 'auto',
     creationAttemptsSinceLastError: 0,
@@ -1477,7 +1477,7 @@ async function startGeneration() {
     document.getElementById('gallery').classList.add('hidden');
     renderScenes(); renderQueue();
 
-    const secondsPerScene = Math.max(4, Math.min(12, Math.round(state.durationFrames / FRAME_RATE)));
+    const secondsPerScene = Math.max(4, Math.min(20, Math.round(state.durationFrames / FRAME_RATE)));
     const payload = {
         scenes: state.scenes.map((scene, i) => ({
             prompt: buildScenePrompt(scene.text, i, state.scenes.length, true),
