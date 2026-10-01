@@ -1361,7 +1361,7 @@ async function pollVideo(
     180;
 
   const pollDelay =
-    2000;
+    5000;
 
   for (
     let attempt = 0;
@@ -1400,9 +1400,18 @@ async function pollVideo(
 
     if (!response.ok) {
 
-      throw new Error(
+    if (response.status === 429) {
+        console.warn(
+            `[VIDEO POLL] Limite de requêtes de statut atteinte. Nouvelle tentative dans 15 secondes.`
+        );
+
+        await sleep(15000);
+        continue;
+    }
+
+    throw new Error(
         `Polling HTTP ${response.status}: ${txt.slice(0, 1200)}`
-      );
+    );
     }
 
     let data;
