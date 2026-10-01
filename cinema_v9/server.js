@@ -1367,7 +1367,7 @@ async function pollVideo(
     180;
 
   const pollDelay =
-    5000;
+    15000;
 
   for (
     let attempt = 0;
