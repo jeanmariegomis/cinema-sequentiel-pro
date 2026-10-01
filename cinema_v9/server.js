@@ -389,10 +389,10 @@ function getApiKeyForRequest(req) {
 // ============================================================
 
 const MODEL =
-  'agnes-video-v2.0';
+  'agnes-video-2.5-flash';
 
 const LEGACY_MODEL =
-  'agnes-video-v2.0';
+  'agnes-video-2.5-flash';
 
 const FRAME_RATE = 24;
 
@@ -821,16 +821,16 @@ async function createVideoTask(
       )
     );
 
-  const seconds =
-    Math.max(
-      4,
-      Math.min(
-        20,
-        Math.round(
-          rawSeconds
-        )
+const seconds =
+  Math.max(
+    4,
+    Math.min(
+      12,
+      Math.round(
+        rawSeconds
       )
-    );
+    )
+  );
 
   const requestedFrames =
     Number(scene.frames) ||
