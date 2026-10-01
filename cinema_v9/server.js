@@ -389,7 +389,7 @@ function getApiKeyForRequest(req) {
 // ============================================================
 
 const MODEL =
-  'agnes-video-2.5-flash';
+  'agnes-video-v2.0';
 
 const LEGACY_MODEL =
   'agnes-video-v2.0';
@@ -1361,7 +1361,7 @@ async function pollVideo(
     180;
 
   const pollDelay =
-    5000;
+    2000;
 
   for (
     let attempt = 0;
