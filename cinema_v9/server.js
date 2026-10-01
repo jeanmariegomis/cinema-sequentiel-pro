@@ -626,37 +626,159 @@ async function createVideoTask(scene, req) {
 
     const response =
       await fetch(
-        `${API_BASE}/videos`,
-        {
-          method: 'POST',
+async function createVideoTask(scene, req) {
+  const apiKeyToUse =
+    getApiKeyForRequest(req) ||
+    process.env.AGNES_API_KEY ||
+    AGNES_API_KEY;
 
-          headers: {
-            'Content-Type':
-              'application/json',
+  if (!apiKeyToUse) {
+    throw new Error('AGNES_API_KEY non configurée');
+  }
 
-            'Authorization':
-              `Bearer ${apiKeyToUse}`
-          },
+  const prompt = String(scene.prompt || '').trim();
 
-          body:
-            JSON.stringify(body)
-        }
+  if (!prompt) {
+    throw new Error('Prompt vidéo vide');
+  }
+
+  const rawSeconds = Number(
+    scene.seconds ??
+    (Number(scene.frames)
+      ? Number(scene.frames) / FRAME_RATE
+      : 8)
+  );
+
+  const seconds = Math.max(
+    4,
+    Math.min(12, Math.round(rawSeconds))
+  );
+
+  const firstFrame = scene.first_frame || null;
+  const lastFrame = scene.last_frame || null;
+
+  const images = Array.isArray(scene.images)
+    ? scene.images.filter(Boolean).slice(0, 5)
+    : [];
+
+  let mode = String(scene.mode || '')
+    .trim()
+    .toLowerCase();
+
+  if (!['text', 'keyframe', 'reference'].includes(mode)) {
+    mode = '';
+  }
+
+  if (!mode) {
+    mode =
+      firstFrame || lastFrame
+        ? 'keyframe'
+        : images.length
+          ? 'reference'
+          : 'text';
+  }
+
+  const primaryBody = {
+    model: MODEL,
+    prompt,
+    mode,
+    seconds: String(seconds),
+    size: '720P',
+    aspect_ratio: scene.aspect_ratio || '9:16',
+    n: 1
+  };
+
+  if (mode === 'keyframe') {
+    if (firstFrame) {
+      primaryBody.first_frame = firstFrame;
+    }
+
+    if (lastFrame) {
+      primaryBody.last_frame = lastFrame;
+    }
+
+    if (
+      !primaryBody.first_frame &&
+      !primaryBody.last_frame
+    ) {
+      throw new Error(
+        'Mode keyframe sélectionné sans image de départ ou de fin'
       );
+    }
+  }
 
-    const txt =
-      await response.text();
+  if (mode === 'reference') {
+    if (!images.length) {
+      throw new Error(
+        'Mode reference sélectionné sans image de référence'
+      );
+    }
+
+    primaryBody.images = images;
+  }
+
+  async function postVideo(body, label) {
+    console.log(
+      '[VIDEO CREATE]',
+      label,
+      JSON.stringify({
+        model: body.model,
+        mode: body.mode || 'legacy',
+        seconds: body.seconds || null,
+        num_frames: body.num_frames || null,
+        size: body.size || null,
+        aspect_ratio: body.aspect_ratio || null,
+        imageCount: Array.isArray(body.images)
+          ? body.images.length
+          : body.image
+            ? 1
+            : 0
+      })
+    );
+
+    const response = await fetch(
+      `${API_BASE}/videos`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKeyToUse}`
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    const txt = await response.text();
 
     if (!response.ok) {
-      throw new Error(
-        `Creation vidéo HTTP ${response.status}: ${txt.slice(0, 1200)}`
+      let details = txt;
+
+      try {
+        const parsed = JSON.parse(txt);
+
+        if (parsed?.code) {
+          details =
+            `${parsed.code}: ${parsed.message || txt}`;
+        } else if (parsed?.error?.message) {
+          details =
+            parsed.error.message;
+        }
+      } catch (_) {}
+
+      const error = new Error(
+        `Creation vidéo HTTP ${response.status}: ${details.slice(0, 1200)}`
       );
+
+      error.httpStatus = response.status;
+      error.providerBody = txt;
+
+      throw error;
     }
 
     let data;
 
     try {
-      data =
-        JSON.parse(txt);
+      data = JSON.parse(txt);
     } catch {
       throw new Error(
         `Réponse Agnes invalide: ${txt.slice(0, 1200)}`
@@ -687,7 +809,9 @@ async function createVideoTask(scene, req) {
     };
   }
 
-  // ===== PRIMARY MODEL =====
+  // ==========================================================
+  // 1. PREMIÈRE TENTATIVE
+  // ==========================================================
 
   try {
     return await postVideo(
@@ -696,19 +820,122 @@ async function createVideoTask(scene, req) {
     );
 
   } catch (primaryError) {
+    const status =
+      Number(primaryError.httpStatus || 0);
+
     const message =
       String(
-        primaryError?.message ||
-        primaryError
+        primaryError.message || primaryError
       );
 
-    // ===== FALLBACK CONDITIONS =====
+    // ========================================================
+    // 2. LIMITE API : NE PAS FAIRE DE FALLBACK
+    // ========================================================
+
+    if (
+      status === 429 ||
+      /rate_limit_exceeded/i.test(message) ||
+      /API rate limit/i.test(message)
+    ) {
+      throw new Error(
+        'Limite API Agnes atteinte pour les utilisateurs gratuits. ' +
+        'La génération ne peut pas continuer tant que la limite n’est pas réinitialisée.'
+      );
+    }
+
+    // ========================================================
+    // 3. FILE D'ATTENTE PLEINE :
+    //    RETRY AUTOMATIQUE
+    // ========================================================
+
+    const queueFull =
+      status === 503 &&
+      /video_queue_full|queue is full/i.test(message);
+
+    if (queueFull) {
+      const maxRetries = 3;
+
+      for (
+        let attempt = 1;
+        attempt <= maxRetries;
+        attempt++
+      ) {
+        const delay =
+          attempt * 15000;
+
+        console.log(
+          `[VIDEO RETRY] File Agnes pleine. ` +
+          `Nouvel essai ${attempt}/${maxRetries} ` +
+          `dans ${delay / 1000}s`
+        );
+
+        await sleep(delay);
+
+        try {
+          return await postVideo(
+            primaryBody,
+            `primary-retry-${attempt}`
+          );
+
+        } catch (retryError) {
+          const retryStatus =
+            Number(
+              retryError.httpStatus || 0
+            );
+
+          const retryMessage =
+            String(
+              retryError.message ||
+              retryError
+            );
+
+          // Si la limite gratuite apparaît
+          // pendant un retry, on arrête immédiatement.
+          if (
+            retryStatus === 429 ||
+            /rate_limit_exceeded/i.test(
+              retryMessage
+            )
+          ) {
+            throw new Error(
+              'Limite API Agnes atteinte pour les utilisateurs gratuits. ' +
+              'La génération ne peut pas continuer tant que la limite n’est pas réinitialisée.'
+            );
+          }
+
+          const stillFull =
+            retryStatus === 503 &&
+            /video_queue_full|queue is full/i.test(
+              retryMessage
+            );
+
+          if (!stillFull) {
+            throw retryError;
+          }
+
+          console.warn(
+            '[VIDEO RETRY] File toujours pleine:',
+            retryMessage
+          );
+        }
+      }
+
+      throw new Error(
+        'Le moteur vidéo Agnes est actuellement saturé. ' +
+        'La file vidéo est restée pleine après plusieurs tentatives.'
+      );
+    }
+
+    // ========================================================
+    // 4. AUTRES ERREURS :
+    //    FALLBACK LEGACY UNIQUEMENT SI PERTINENT
+    // ========================================================
 
     const canFallback =
-      /HTTP (400|404|405|409|415|422|500|501|502|503)/i.test(
+      /HTTP (400|404|405|415|422|500|501|502)/i.test(
         message
-      ) ||
-      /model|schema|parameter|seconds|duration|frames|invalid/i.test(
+      ) &&
+      /model|schema|parameter|seconds|duration|invalid/i.test(
         message
       );
 
@@ -716,19 +943,39 @@ async function createVideoTask(scene, req) {
       throw primaryError;
     }
 
-    // ===== LEGACY V2.0 FALLBACK =====
+    // ========================================================
+    // 5. FALLBACK LEGACY AVEC NUM_FRAMES VALIDE
+    // ========================================================
+
+    // Agnes exige :
+    // num_frames = 8 * n + 1
+    //
+    // On choisit la valeur valide la plus proche
+    // de seconds * FRAME_RATE.
+
+    const requestedFrames =
+      Math.max(
+        1,
+        Math.round(
+          seconds * FRAME_RATE
+        )
+      );
+
+    const legacyFrames =
+      Math.max(
+        9,
+        8 *
+          Math.round(
+            (requestedFrames - 1) / 8
+          ) +
+          1
+      );
 
     const legacyBody = {
-      model:
-        'agnes-video-v2.0',
-
+      model: 'agnes-video-v2.0',
       prompt,
-
-      num_frames:
-        frames,
-
-      frame_rate:
-        FRAME_RATE
+      num_frames: legacyFrames,
+      frame_rate: FRAME_RATE
     };
 
     if (images.length) {
@@ -741,24 +988,52 @@ async function createVideoTask(scene, req) {
         firstFrame;
     }
 
-    try {
-      console.warn(
-        '[VIDEO FALLBACK] primary rejected:',
-        message
-      );
+    console.warn(
+      '[VIDEO FALLBACK]',
+      'primary rejected:',
+      message
+    );
 
+    console.log(
+      '[VIDEO FALLBACK]',
+      `num_frames=${legacyFrames}`,
+      `(requested=${requestedFrames})`
+    );
+
+    try {
       return await postVideo(
         legacyBody,
         'legacy-v2.0-fallback'
       );
 
     } catch (fallbackError) {
-      throw new Error(
-        `Création vidéo échouée. Primaire: ${message.slice(0, 700)} | ` +
-        `Fallback: ${String(
-          fallbackError?.message ||
+      const fallbackStatus =
+        Number(
+          fallbackError.httpStatus || 0
+        );
+
+      const fallbackMessage =
+        String(
+          fallbackError.message ||
           fallbackError
-        ).slice(0, 700)}`
+        );
+
+      if (
+        fallbackStatus === 429 ||
+        /rate_limit_exceeded/i.test(
+          fallbackMessage
+        )
+      ) {
+        throw new Error(
+          'Limite API Agnes atteinte pour les utilisateurs gratuits. ' +
+          'La génération ne peut pas continuer tant que la limite n’est pas réinitialisée.'
+        );
+      }
+
+      throw new Error(
+        `Création vidéo échouée. ` +
+        `Primaire: ${message.slice(0, 700)} | ` +
+        `Fallback: ${fallbackMessage.slice(0, 700)}`
       );
     }
   }
