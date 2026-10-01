@@ -1099,6 +1099,11 @@ const seconds =
     30000,
     45000
   ];
+  const rateLimitRetryDelays = [
+  60000,
+  120000,
+  180000
+];
 
   for (
     let attempt = 0;
@@ -1143,9 +1148,30 @@ const seconds =
         ) === 429
       ) {
 
-        throw new Error(
-          `Limite API gratuite atteinte, veuillez réessayer plus tard.`
-        );
+        if (
+  attempt <
+  rateLimitRetryDelays.length
+) {
+
+  const delay =
+    rateLimitRetryDelays[
+      attempt
+    ];
+
+  console.warn(
+    `[VIDEO RETRY] Limite API Agnes atteinte. Nouvelle tentative dans ${delay / 1000}s.`
+  );
+
+  await sleep(
+    delay
+  );
+
+  continue;
+}
+
+throw new Error(
+  `Limite API gratuite atteinte après plusieurs tentatives.`
+);
       }
 
       // ========================================================
