@@ -1112,6 +1112,20 @@ function formatTime(seconds) {
     return m + ':' + String(s).padStart(2, '0');
 }
 
+// Active/désactive le bouton Générer selon les prérequis réels.
+function updateGenerateBtn() {
+    const btn = document.getElementById('generate-btn');
+    if (!btn) return;
+    const hasScenes = Array.isArray(state.scenes) && state.scenes.length > 0;
+    const hasBible = !!(state.bible || document.getElementById('bible-input')?.value.trim());
+    const hasReference = !!state.initialRefDataUrl;
+    const canGenerate = hasScenes && hasBible && hasReference && !state.isRunning;
+    btn.disabled = !canGenerate;
+    btn.title = canGenerate
+        ? 'Lancer la génération du film'
+        : 'Ajoutez un scénario découpé, une bible visuelle et une image de référence';
+}
+
 // ══════════════════════════════════════════════════════════════════
 // DÉCOUPAGE
 // ══════════════════════════════════════════════════════════════════
