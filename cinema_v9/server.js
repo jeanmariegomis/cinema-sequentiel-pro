@@ -1415,19 +1415,30 @@ async function pollVideo(
         model
       )}`;
 
-    const response =
-      await fetch(
-        url,
-        {
-          method:
-            'GET',
+    let response;
 
-          headers: {
-            'Authorization':
-              `Bearer ${apiKeyToUse}`
-          }
+try {
+  response =
+    await fetch(
+      url,
+      {
+        method:
+          'GET',
+
+        headers: {
+          'Authorization':
+            `Bearer ${apiKeyToUse}`
         }
-      );
+      }
+    );
+} catch (fetchError) {
+  console.warn(
+    `[VIDEO POLL] Erreur réseau temporaire: ${fetchError?.message || fetchError}. Nouvelle tentative dans 30 secondes.`
+  );
+
+  await sleep(30000);
+  continue;
+}
 
     const txt =
       await response.text();
