@@ -1901,7 +1901,11 @@ app.post(
     );
 
     // Launch immediately.
-    processJobs();
+    setImmediate(() => {
+    processJobs().catch(error => {
+        console.error('[WORKER LAUNCH ERROR]', error);
+    });
+});
 
     return res
       .status(202)
