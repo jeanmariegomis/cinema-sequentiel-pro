@@ -1093,18 +1093,13 @@ const seconds =
   // ==========================================================
 
   let primaryError = null;
-
-  const queueRetryDelays = [
+const queueRetryDelays = [
+  15000,
   30000,
-  60000,
-  90000,
-  120000,
-  180000
+  45000
 ];
-  const rateLimitRetryDelays = [
-  60000,
-  120000,
-  180000
+const rateLimitRetryDelays = [
+  120000
 ];
 
   for (
@@ -1395,7 +1390,7 @@ async function pollVideo(
     180;
 
   const pollDelay =
-    15000;
+    20000;
 
   for (
     let attempt = 0;
@@ -1433,10 +1428,10 @@ try {
     );
 } catch (fetchError) {
   console.warn(
-    `[VIDEO POLL] Erreur réseau temporaire: ${fetchError?.message || fetchError}. Nouvelle tentative dans 30 secondes.`
+    `[VIDEO POLL] Erreur réseau temporaire: ${fetchError?.message || fetchError}. Nouvelle tentative dans 10 secondes.`
   );
 
-  await sleep(30000);
+  await sleep(10000);
   continue;
 }
 
@@ -1446,12 +1441,12 @@ try {
     if (!response.ok) {
 
     if (response.status === 429) {
-        console.warn(
-            `[VIDEO POLL] Limite de requêtes de statut atteinte. Nouvelle tentative dans 15 secondes.`
-        );
+    console.warn(
+        `[VIDEO POLL] Limite de requêtes de statut atteinte. Nouvelle tentative dans 30 secondes.`
+    );
 
-        await sleep(15000);
-        continue;
+    await sleep(30000);
+    continue;
     }
 
     throw new Error(
