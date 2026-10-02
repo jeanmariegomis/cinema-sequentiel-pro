@@ -1441,13 +1441,64 @@ async function pollVideo(
     );
   }
 
-  // Poll Agnes every 2s so completed jobs are returned promptly.
-  // Keep the same ~15-minute maximum polling window as the previous 5s profile.
+  // Adaptive polling: stay responsive when progress moves,
+  // but slow down when Agnes keeps the same progress to reduce 429s.
+  // The client-side progress tracking is unchanged.
   const maxAttempts =
     450;
 
-  const pollDelay =
+  const basePollDelay =
     2000;
+
+  let lastProgress = null;
+  let unchangedProgressPolls = 0;
+  let rateLimitCount = 0;
+
+  function getAdaptivePollDelay(progress) {
+    if (progress == null) {
+      return basePollDelay;
+    }
+
+    if (lastProgress === progress) {
+      unchangedProgressPolls++;
+    } else {
+      unchangedProgressPolls = 0;
+      lastProgress = progress;
+    }
+
+    if (unchangedProgressPolls >= 6) {
+      return 6000;
+    }
+
+    if (unchangedProgressPolls >= 3) {
+      return 4000;
+    }
+
+    return basePollDelay;
+  }
+
+  function getRetryAfterMs(response) {
+    const retryAfter = response.headers.get('retry-after');
+
+    if (!retryAfter) {
+      return null;
+    }
+
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(30000, Math.max(1000, Math.round(seconds * 1000)));
+    }
+
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(
+        30000,
+        Math.max(1000, retryAt - Date.now())
+      );
+    }
+
+    return null;
+  }
 
   for (
     let attempt = 0;
@@ -1498,18 +1549,38 @@ try {
 
     if (!response.ok) {
 
-    if (response.status === 429 || response.status === 503) {
-    console.warn(
-        `[VIDEO POLL] Agnes répond ${response.status}. Nouvelle tentative dans 30 secondes.`
-    );
+      if (response.status === 429 || response.status === 503) {
+        const retryAfterMs =
+          getRetryAfterMs(response);
 
-    await sleep(30000);
-    continue;
-    }
+        rateLimitCount++;
 
-    throw new Error(
+        // Prefer Agnes' Retry-After when supplied. Otherwise use a
+        // controlled backoff so repeated 429s do not create a tight loop.
+        const fallbackDelay =
+          Math.min(
+            30000,
+            rateLimitCount <= 1
+              ? 10000
+              : rateLimitCount === 2
+                ? 20000
+                : 30000
+          );
+
+        const delay =
+          retryAfterMs ?? fallbackDelay;
+
+        console.warn(
+          `[VIDEO POLL] Agnes répond ${response.status}. Nouvelle tentative dans ${Math.round(delay / 1000)} secondes.`
+        );
+
+        await sleep(delay);
+        continue;
+      }
+
+      throw new Error(
         `Polling HTTP ${response.status}: ${txt.slice(0, 1200)}`
-    );
+      );
     }
 
     let data;
@@ -1600,7 +1671,11 @@ return videoUrl;
     }
 
     await sleep(
-      pollDelay
+      getAdaptivePollDelay(
+        data.progress != null
+          ? Number(data.progress)
+          : null
+      )
     );
   }
 
