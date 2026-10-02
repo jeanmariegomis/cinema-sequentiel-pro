@@ -43,6 +43,22 @@ app.get(
     out = out.replace(marker, route + '\n' + marker);
   }
 
+  if (!out.includes('// __CSP_PROCESSJOBS_SAFE_LAUNCH__')) {
+    const workerLaunchPattern = /setImmediate\(\(\) => \{\s*processJobs\(\)\.catch\(error => \{\s*console\.error\('\[WORKER LAUNCH ERROR\]', error\);\s*\}\);\s*\}\);/;
+    if (!workerLaunchPattern.test(out)) {
+      throw new Error('Lancement processJobs() introuvable pour correction du worker');
+    }
+    const safeLaunch = `// __CSP_PROCESSJOBS_SAFE_LAUNCH__
+    setImmediate(() => {
+      try {
+        processJobs();
+      } catch (error) {
+        console.error('[WORKER LAUNCH ERROR]', error);
+      }
+    });`;
+    out = out.replace(workerLaunchPattern, safeLaunch);
+  }
+
   const responseNeedle = `    return res\n      .status(202)\n      .json({`;
   if (!out.includes('X-Job-Id')) {
     if (!out.includes(responseNeedle)) throw new Error('Réponse 202 de /api/jobs introuvable');
