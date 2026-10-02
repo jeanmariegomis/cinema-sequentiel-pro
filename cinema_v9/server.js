@@ -397,6 +397,11 @@ const LEGACY_MODEL =
 
 const FRAME_RATE = 24;
 
+// Deterministic generation: the same prompt/reference/scene settings
+// produce the same Agnes seed unless the client explicitly supplies one.
+const AGNES_DETERMINISTIC_SEED =
+  String(process.env.AGNES_DETERMINISTIC_SEED || 'true').toLowerCase() !== 'false';
+
 const DATA_DIR =
   path.join(
     process.cwd(),
@@ -882,6 +887,43 @@ function isQueueFullError(
 // 192 -> 193
 // ============================================================
 
+function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFrames) {
+  if (!AGNES_DETERMINISTIC_SEED) {
+    return null;
+  }
+
+  const explicitSeed = Number(scene.seed);
+  if (Number.isSafeInteger(explicitSeed) && explicitSeed >= 0) {
+    return explicitSeed;
+  }
+
+  const seedMaterial = JSON.stringify({
+    prompt,
+    images,
+    mode,
+    width: dimensions.width,
+    height: dimensions.height,
+    frames: validFrames,
+    frame_rate: FRAME_RATE
+  });
+
+  return crypto
+    .createHash('sha256')
+    .update(seedMaterial, 'utf8')
+    .digest()
+    .readUInt32BE(0);
+}
+
+function buildConsistencyPrompt(prompt) {
+  return [
+    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot. Keep the same face, facial proportions, hairstyle, hairline, skin tone, age, body proportions, clothing, colors, accessories, and distinctive features from the reference image. Do not redesign, beautify, age, de-age, slim, enlarge muscles, or replace the character.',
+    'Preserve the same environment, architecture, important objects, spatial layout, time of day, lighting direction, color palette, and visual style established by the reference and visual bible unless the prompt explicitly requests a change.',
+    'REALISTIC CINEMATIC MOTION: natural human anatomy, realistic skin texture, physically plausible movement, believable weight and inertia, realistic hands and facial motion, natural eye focus and blinking, coherent shadows and reflections, photographic lighting, cinematic depth of field, subtle camera movement. Keep motion continuous from the first frame to the last frame; no sudden resets or scene changes.',
+    'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
+    'SCENE INSTRUCTIONS:\n' + prompt
+  ].join('\n\n');
+}
+
 function getValidLegacyFrames(
   requestedFrames
 ) {
@@ -1068,13 +1110,26 @@ async function createVideoTask(
       scene.aspect_ratio
     );
 
+  const deterministicSeed =
+    makeDeterministicSeed(
+      scene,
+      prompt,
+      images,
+      mode,
+      dimensions,
+      validFrames
+    );
+
+  const continuityPrompt =
+    buildConsistencyPrompt(prompt);
+
   const primaryBody = {
 
     model:
       MODEL,
 
     prompt:
-      prompt,
+      continuityPrompt,
 
     width:
       dimensions.width,
@@ -1088,8 +1143,12 @@ async function createVideoTask(
     frame_rate:
       FRAME_RATE,
 
+    ...(deterministicSeed !== null
+      ? { seed: deterministicSeed }
+      : {}),
+
     negative_prompt:
-      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, CGI look, plastic skin, doll face'
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'
   };
 
   if (mode === 'keyframe') {
@@ -1172,7 +1231,10 @@ async function createVideoTask(
         imageCount:
           Array.isArray(body.extra_body?.image)
             ? body.extra_body.image.length
-            : (body.image ? 1 : 0)
+            : (body.image ? 1 : 0),
+
+        seed:
+          body.seed ?? null
       })
     );
 
