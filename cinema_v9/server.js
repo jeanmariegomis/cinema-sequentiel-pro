@@ -768,6 +768,42 @@ function isQueueFullError(
   );
 }
 
+function buildRealismPrompt(basePrompt, mode, imageCount) {
+  const prompt = String(basePrompt || '').trim();
+
+  const continuity = [
+    'LIVE-ACTION PHOTOREALISM ONLY.',
+    'The result must look like real footage captured by a professional cinema camera, with physically plausible anatomy, motion, lighting, materials, reflections and depth.',
+    'Use natural human facial proportions, realistic skin pores and texture, individual hair strands, believable eyes, teeth and hands, realistic fabric and body weight.',
+    'Preserve identity continuously: the same face, apparent age, hairstyle, body proportions, skin tone, clothing, accessories and distinctive physical traits must remain unchanged throughout the shot.',
+    'Preserve scene continuity: the same location, objects, weather, time of day, lighting direction, color temperature and spatial relationships must remain coherent.',
+    'Motion must be subtle and physically plausible: natural walking, breathing, blinking, eye focus, hand gestures, cloth and hair movement. No robotic or rubbery motion.',
+    'Camera work must feel physically captured: restrained handheld, dolly, slider or tripod movement, realistic shutter/motion blur, natural depth of field and lens perspective.',
+    'Do not stylize or redesign the subject. No anime, cartoon, illustration, painterly look, plastic skin, doll-like face, game-engine look, CGI render or obvious AI artifacts.',
+    'No face morphing, identity drift, age change, body-shape change, duplicate people, extra fingers, malformed hands, warped objects or background instability.',
+    'No subtitles, captions, logos, watermarks or generated on-screen writing.',
+    'Keep the original story action and dialogue from the user prompt. Do not add new characters or events unless explicitly requested.'
+  ].join(' ');
+
+  let referenceContext = '';
+  if (mode === 'reference' && imageCount > 0) {
+    const refs = Array.from({ length: imageCount }, (_, i) => '<Picture ' + (i + 1) + '>').join(', ');
+    referenceContext =
+      'Reference images are the identity and visual-continuity anchors. Treat these references as authoritative for the character and environment. Match them closely and keep them consistent from beginning to end. Reference material: ' +
+      refs + '.';
+  } else if (mode === 'keyframe') {
+    referenceContext =
+      'The supplied keyframe image(s) are authoritative continuity anchors. Preserve the exact identity, wardrobe, environment and lighting shown in them; changes must be limited to the requested motion and camera movement.';
+  }
+
+  const languageRule =
+    'If speech is present, use natural spoken French only, with accurate French lip synchronization.';
+
+  return [continuity, referenceContext, languageRule, prompt]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 // ============================================================
 // VALID LEGACY FRAME COUNT
 // ============================================================
@@ -833,12 +869,12 @@ async function createVideoTask(
     );
   }
 
-  const prompt =
+  const sourcePrompt =
     String(
       scene.prompt || ''
     ).trim();
 
-  if (!prompt) {
+  if (!sourcePrompt) {
 
     throw new Error(
       'Prompt vidéo vide'
@@ -927,13 +963,20 @@ async function createVideoTask(
   // PRIMARY BODY
   // ==========================================================
 
+  const enhancedPrompt =
+    buildRealismPrompt(
+      sourcePrompt,
+      mode,
+      images.length
+    );
+
   const primaryBody = {
 
     model:
       MODEL,
 
     prompt:
-      prompt,
+      enhancedPrompt,
 
     mode:
       mode,
@@ -992,6 +1035,31 @@ async function createVideoTask(
     primaryBody.images =
       images;
   }
+
+  // ==========================================================
+  // MODERN AGNES 2.5 REQUEST
+  // ==========================================================
+  //
+  // The 2.5 Flash API uses the modern video schema:
+  // model + prompt + mode + seconds + size + aspect_ratio
+  // plus reference/keyframe media when requested.
+  // Do not send legacy v2.0 frame-count parameters.
+  // ==========================================================
+
+  console.log(
+    '[AGNES PROFILE]',
+    JSON.stringify({
+      model: MODEL,
+      mode,
+      seconds,
+      size: scene.size || '720P',
+      aspect_ratio: scene.aspect_ratio || '9:16',
+      referenceImages: images.length,
+      keyframeStart: Boolean(firstFrame),
+      keyframeEnd: Boolean(lastFrame),
+      realismProfile: 'live-action-photorealistic-v1'
+    })
+  );
 
   // ==========================================================
   // POST HELPER
