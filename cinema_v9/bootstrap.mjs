@@ -96,7 +96,7 @@ app.get(
   if (!out.includes('// __CSP_V2_DURATION_FIX__')) {
     const oldFrameLine = '  primaryBody.num_frames = getValidLegacyFrames(requestedFrames);';
     if (out.includes(oldFrameLine)) {
-      const durationFix = `  // __CSP_V2_DURATION_FIX__\n  const __CSP_V2_TARGET_FRAMES_FIX__ = Number(requestedFrames) || 121;\n  const __CSP_V2_FRAMES_FIX__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_TARGET_FRAMES_FIX__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_FRAMES_FIX__;\n  primaryBody.frame_rate = FRAME_RATE;\n  console.log(`[V2.0] frame normalization: requested=${__CSP_V2_TARGET_FRAMES_FIX__}, sent=${__CSP_V2_FRAMES_FIX__}, duration=${(__CSP_V2_FRAMES_FIX__ / FRAME_RATE).toFixed(3)}s`);`;
+      const durationFix = `  // __CSP_V2_DURATION_FIX__\n  const __CSP_V2_TARGET_FRAMES_FIX__ = Number(requestedFrames) || 121;\n  const __CSP_V2_FRAMES_FIX__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_TARGET_FRAMES_FIX__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_FRAMES_FIX__;\n  primaryBody.frame_rate = FRAME_RATE;\n  console.log('[V2.0] frame normalization: requested=' + __CSP_V2_TARGET_FRAMES_FIX__ + ', sent=' + __CSP_V2_FRAMES_FIX__ + ', duration=' + (__CSP_V2_FRAMES_FIX__ / FRAME_RATE).toFixed(3) + 's');`;
       out = out.replace(oldFrameLine, durationFix);
     }
   }
