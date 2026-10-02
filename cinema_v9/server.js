@@ -1228,7 +1228,7 @@ const rateLimitRetryDelays = [];
 }
 
 throw new Error(
-  `Limite API gratuite atteinte après plusieurs tentatives.`
+  `Limite API gratuite atteinte. Veuillez réessayer plus tard.`
 );
       }
 
@@ -1291,7 +1291,7 @@ throw new Error(
   ) {
 
     throw new Error(
-      `Agnes est actuellement saturé après plusieurs tentatives. ${primaryMessage}`
+      `Agnes est actuellement saturé. ${primaryMessage}`
     );
   }
 
