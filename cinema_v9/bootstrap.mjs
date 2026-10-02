@@ -55,25 +55,11 @@ patchFile(serverPath, source => {
     }
   }
 
-  // Faster 8-second V2.0 generation without changing the requested scene duration.
-  // 161 frames / 20 fps = 8.05 s and is 16.6% fewer generated frames than 193 / 24 fps.
-  if (!out.includes('// __CSP_V2_SPEED_COHERENCE_FIX__')) {
-    const durationMarker = '  // __CSP_V2_DURATION_FIX__';
-    const durationStart = out.indexOf(durationMarker);
-    if (durationStart !== -1) {
-      const durationEnd = out.indexOf("  // __CSP_V2_BODY_FIX__", durationStart);
-      if (durationEnd !== -1) {
-        const block = "  // __CSP_V2_SPEED_COHERENCE_FIX__\n  const __CSP_V2_SOURCE_SECONDS__ = Math.max(4, Math.min(12, __CSP_V2_TARGET_FRAMES_FIX__ / FRAME_RATE));\n  const __CSP_V2_FRAME_RATE__ = 20;\n  const __CSP_V2_SPEED_FRAMES__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_SOURCE_SECONDS__ * __CSP_V2_FRAME_RATE__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_SPEED_FRAMES__;\n  primaryBody.frame_rate = __CSP_V2_FRAME_RATE__;\n  primaryBody.width = 720;\n  primaryBody.height = 1280;\n  console.log('[V2.0] speed/coherence profile: frames=' + __CSP_V2_SPEED_FRAMES__ + ', fps=' + __CSP_V2_FRAME_RATE__ + ', duration=' + (__CSP_V2_SPEED_FRAMES__ / __CSP_V2_FRAME_RATE__).toFixed(3) + 's, size=720x1280');\n\n";
-        out = out.slice(0, durationEnd) + block + out.slice(durationEnd);
-      }
-    }
-  }
-
   if (!out.includes('// __CSP_V2_BODY_FIX__')) {
     const postMarker = '  const response =';
     const pos = out.indexOf(postMarker);
     if (pos !== -1) {
-      const bodyFix = "  // __CSP_V2_BODY_FIX__\n  primaryBody.model = MODEL;\n  primaryBody.frame_rate = primaryBody.frame_rate || 20;\n  primaryBody.width = primaryBody.width || 720;\n  primaryBody.height = primaryBody.height || 1280;\n  delete primaryBody.mode;\n  delete primaryBody.seconds;\n  delete primaryBody.size;\n  delete primaryBody.aspect_ratio;\n  delete primaryBody.n;\n  delete primaryBody.first_frame;\n  delete primaryBody.last_frame;\n  delete primaryBody.images;\n  if (firstFrame) primaryBody.image = firstFrame;\n  else if (images.length) primaryBody.image = images[0];\n  primaryBody.negative_prompt = 'cartoon, anime, 3d render, CGI look, plastic skin, doll face, exaggerated eyes, deformed hands, extra fingers, duplicate person, identity drift, face distortion, warped anatomy, text, subtitles, watermark, logo';\n  primaryBody.prompt = String(primaryBody.prompt || '') + ' Natural live-action cinematic realism, physically plausible human motion, realistic skin texture, natural facial proportions, stable character identity, consistent hair and clothing, coherent anatomy, subtle camera movement, realistic lighting, no visual style drift.';\n\n";
+      const bodyFix = "  // __CSP_V2_BODY_FIX__\n  // __CSP_V2_SPEED_COHERENCE_FIX__\n  primaryBody.model = MODEL;\n  const __CSP_V2_REQUESTED_SECONDS__ = Math.max(4, Math.min(12, (Number(requestedFrames) || 193) / FRAME_RATE));\n  const __CSP_V2_FINAL_FPS__ = 20;\n  const __CSP_V2_FINAL_FRAMES__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_REQUESTED_SECONDS__ * __CSP_V2_FINAL_FPS__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_FINAL_FRAMES__;\n  primaryBody.frame_rate = __CSP_V2_FINAL_FPS__;\n  primaryBody.width = 720;\n  primaryBody.height = 1280;\n  delete primaryBody.mode;\n  delete primaryBody.seconds;\n  delete primaryBody.size;\n  delete primaryBody.aspect_ratio;\n  delete primaryBody.n;\n  delete primaryBody.first_frame;\n  delete primaryBody.last_frame;\n  delete primaryBody.images;\n  if (firstFrame) primaryBody.image = firstFrame;\n  else if (images.length) primaryBody.image = images[0];\n  primaryBody.negative_prompt = 'cartoon, anime, 3d render, CGI look, plastic skin, doll face, exaggerated eyes, deformed hands, extra fingers, duplicate person, identity drift, face distortion, warped anatomy, text, subtitles, watermark, logo';\n  primaryBody.prompt = String(primaryBody.prompt || '') + ' Natural live-action cinematic realism, physically plausible human motion, realistic skin texture, natural facial proportions, stable character identity, consistent hair and clothing, coherent anatomy, subtle camera movement, realistic lighting, no visual style drift.';\n  console.log('[V2.0] speed/coherence profile: requested=' + __CSP_V2_REQUESTED_SECONDS__.toFixed(3) + 's, frames=' + __CSP_V2_FINAL_FRAMES__ + ', fps=' + __CSP_V2_FINAL_FPS__ + ', duration=' + (__CSP_V2_FINAL_FRAMES__ / __CSP_V2_FINAL_FPS__).toFixed(3) + 's, size=720x1280');\n\n";
       out = out.slice(0, pos) + bodyFix + out.slice(pos);
     }
   }
