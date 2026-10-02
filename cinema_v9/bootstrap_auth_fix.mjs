@@ -1,3 +1,1 @@
-// Intentionally empty.
-// Authentication is handled by bootstrap.mjs.
-// Do not mutate public/index.html during server startup.
+// Stable baseline placeholder. Authentication is handled by the main server.
