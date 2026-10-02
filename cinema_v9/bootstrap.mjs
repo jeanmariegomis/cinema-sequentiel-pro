@@ -64,7 +64,6 @@ patchFile(serverPath, source => {
     }
   }
 
-  // Faster balanced V2.0 profile: 121 frames at 15 fps keeps an ~8.1s shot while reducing generated frames.
   if (!out.includes('// __CSP_V2_BALANCED_SPEED_PROFILE__')) {
     const marker = '  // __CSP_V2_BODY_FIX__';
     const pos = out.indexOf(marker);
@@ -74,7 +73,6 @@ patchFile(serverPath, source => {
     }
   }
 
-  // Reduce polling overhead: completion detection every 5s instead of 20s.
   if (!out.includes('// __CSP_AGNES_FAST_POLL__')) {
     out = out.replace("const POLL_INTERVAL_MS = 20000;", "// __CSP_AGNES_FAST_POLL__\nconst POLL_INTERVAL_MS = 5000;");
   }
