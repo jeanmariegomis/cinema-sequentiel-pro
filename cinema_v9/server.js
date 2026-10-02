@@ -1699,8 +1699,22 @@ async function processJob(job) {
         if (!scene.videoId) {
           const sceneInput = {
             ...scene,
-            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
+            images: scene.images?.length
+              ? scene.images
+              : (job.referenceImage ? [job.referenceImage] : [])
           };
+
+          // A shared reference image must actually activate reference mode.
+          // Keep explicit keyframe mode when first/last frames are supplied.
+          if (
+            sceneInput.images?.length &&
+            !sceneInput.first_frame &&
+            !sceneInput.last_frame &&
+            sceneInput.mode !== 'keyframe'
+          ) {
+            sceneInput.mode = 'reference';
+          }
+
           const created = await createVideoTask(sceneInput, { get: () => '' });
           scene.videoId = created.videoId;
           scene.model = created.model;
@@ -1982,12 +1996,20 @@ app.post(
                 ),
 
               mode:
-                s.mode ||
                 (
-                  images.length
-                    ? 'reference'
-                    : 'text'
-                ),
+                  s.first_frame ||
+                  s.last_frame
+                )
+                  ? 'keyframe'
+                  : (
+                      s.mode === 'keyframe'
+                        ? 'keyframe'
+                        : (
+                            sharedReference || images.length
+                              ? 'reference'
+                              : 'text'
+                          )
+                    ),
 
               seconds:
                 seconds,
