@@ -90,6 +90,17 @@ app.get(
     console.log('[BOOTSTRAP] Agnes Video V2.0 test mode enabled');
   }
 
+  // __CSP_V2_DURATION_FIX__
+  // Fix already-deployed V2.0 servers that still convert 8s to 192 frames.
+  // Agnes V2.0 requires 8n+1 frames; 193 frames at 24fps gives ~8.04s.
+  if (!out.includes('// __CSP_V2_DURATION_FIX__')) {
+    const oldFrameLine = '  primaryBody.num_frames = getValidLegacyFrames(requestedFrames);';
+    if (out.includes(oldFrameLine)) {
+      const durationFix = `  // __CSP_V2_DURATION_FIX__\n  const __CSP_V2_TARGET_FRAMES_FIX__ = Number(requestedFrames) || 121;\n  const __CSP_V2_FRAMES_FIX__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_TARGET_FRAMES_FIX__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_FRAMES_FIX__;\n  primaryBody.frame_rate = FRAME_RATE;\n  console.log(`[V2.0] frame normalization: requested=${__CSP_V2_TARGET_FRAMES_FIX__}, sent=${__CSP_V2_FRAMES_FIX__}, duration=${(__CSP_V2_FRAMES_FIX__ / FRAME_RATE).toFixed(3)}s`);`;
+      out = out.replace(oldFrameLine, durationFix);
+    }
+  }
+
   return out;
 }, 'server.js');
 
@@ -190,8 +201,7 @@ patchFile(indexPath, source => {
   }
 
   // __CSP_V2_DURATION_LOG__
-  // The UI used to log duration*24 directly, which produced invalid V2.0 counts
-  // such as 192 for an 8-second scene. Normalize that diagnostic line to 8n+1.
+  // Keep compatibility with the existing diagnostic patch.
   if (!out.includes('__CSP_V2_DURATION_LOG__')) {
     const logPatch = `
 <script>
@@ -210,6 +220,34 @@ patchFile(indexPath, source => {
 </script>
 `;
     out = out.replace('</body>', logPatch + '\n</body>');
+  }
+
+  // __CSP_V2_DURATION_LOG_GENERIC__
+  // Normalize any old UI diagnostic frame count to a valid V2.0 8n+1 count.
+  if (!out.includes('__CSP_V2_DURATION_LOG_GENERIC__')) {
+    const genericLogPatch = `
+<script>
+// __CSP_V2_DURATION_LOG_GENERIC__
+(() => {
+  const previousConsoleLog = console.log;
+  console.log = function(...args) {
+    try {
+      if (args.length === 1 && typeof args[0] === 'string') {
+        args[0] = args[0].replace(/(Durée\/scène\\s*:\\s*)(\\d+)(\\s+frames\\s+\\()([\\d.]+)(s\\))/i, (full, prefix, rawFrames, middle, rawSeconds, suffix) => {
+          const requested = Number(rawFrames);
+          if (!Number.isFinite(requested) || requested < 1) return full;
+          const normalized = Math.max(9, Math.min(441, Math.round((requested - 1) / 8) * 8 + 1));
+          const seconds = normalized / 24;
+          return prefix + normalized + middle + seconds.toFixed(2) + suffix;
+        });
+      }
+    } catch (_) {}
+    return previousConsoleLog.apply(this, args);
+  };
+})();
+</script>
+`;
+    out = out.replace('</body>', genericLogPatch + '\n</body>');
   }
 
   return out;
