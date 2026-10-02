@@ -1126,11 +1126,9 @@ async function createVideoTask(
   // ==========================================================
 
   let primaryError = null;
-const queueRetryDelays = [
-  15000,
-  30000,
-  45000
-];
+// Avoid repeated video-creation POSTs that can consume the free API quota
+// or create duplicate work when Agnes is temporarily unavailable.
+const queueRetryDelays = [];
 const rateLimitRetryDelays = [];
 
   for (
