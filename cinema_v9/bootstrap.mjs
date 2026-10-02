@@ -35,6 +35,21 @@ app.get('/api/jobs/latest', requirePrivateAuth, (req, res) => {
     out = out.replace(marker, route + '\n' + marker);
   }
 
+  // The worker is synchronous in the current server implementation; do not call .catch() on it.
+  if (!out.includes('// __CSP_PROCESSJOBS_SAFE_LAUNCH__')) {
+    const workerLaunchPattern = /setImmediate\(\(\) => \{\s*processJobs\(\)\.catch\(error => \{\s*console\.error\('\[WORKER LAUNCH ERROR\]', error\);\s*\}\);\s*\}\);/;
+    if (!workerLaunchPattern.test(out)) throw new Error('Lancement processJobs() introuvable');
+    const safeLaunch = `// __CSP_PROCESSJOBS_SAFE_LAUNCH__
+    setImmediate(() => {
+      try {
+        processJobs();
+      } catch (error) {
+        console.error('[WORKER LAUNCH ERROR]', error);
+      }
+    });`;
+    out = out.replace(workerLaunchPattern, safeLaunch);
+  }
+
   // Make the 202 response identifiable even if its body is stripped upstream.
   if (!out.includes("res.setHeader('X-Job-Id', id)")) {
     const needle = `    return res
@@ -135,6 +150,15 @@ patchFile(indexPath, source => {
         }
         if (!data || !data.id) throw new Error('Le serveur a créé ou accepté la demande mais n’a renvoyé aucun identifiant de job.');`;
     out = out.replace(needle, replacement);
+  }
+
+  if (!out.includes('// __CSP_V2_CLIENT_FRAME_FIX__')) {
+    const frameNeedle = '            frames: Math.round(secondsPerScene * FRAME_RATE)';
+    if (out.includes(frameNeedle)) {
+      const frameReplacement = `            // __CSP_V2_CLIENT_FRAME_FIX__
+            frames: Math.max(9, Math.min(441, Math.round((secondsPerScene * FRAME_RATE - 1) / 8) * 8 + 1))`;
+      out = out.replace(frameNeedle, frameReplacement);
+    }
   }
 
   if (!out.includes('cinema-v13-safe-poll')) {
