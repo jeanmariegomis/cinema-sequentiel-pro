@@ -1605,6 +1605,70 @@ function setupRefImageHandlers(){
     const status = document.getElementById('ref-status');
     if(!input || !zone) return;
 
+    // __CSP_REF_IMAGE_OPTIMIZE__
+    // Compress the reference image before embedding it in the /api/jobs JSON.
+    // This prevents large Base64 uploads from making job creation take tens of seconds.
+    const optimizeReferenceImage = (file, callback)=>{
+        const reader = new FileReader();
+
+        reader.onload = ev=>{
+            const img = new Image();
+
+            img.onload = ()=>{
+                try {
+                    const maxDimension = 1280;
+                    const scale = Math.min(
+                        1,
+                        maxDimension / Math.max(img.naturalWidth, img.naturalHeight)
+                    );
+
+                    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+                    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d', { alpha:false });
+                    if (!ctx) throw new Error('Canvas indisponible');
+
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const optimizedDataUrl =
+                        canvas.toDataURL('image/jpeg', 0.78);
+
+                    callback(
+                        optimizedDataUrl,
+                        {
+                            name: file.name,
+                            size: Math.round(
+                                optimizedDataUrl.length * 0.75
+                            ),
+                            originalSize: file.size,
+                            type: 'image/jpeg'
+                        }
+                    );
+                } catch (_) {
+                    // Preserve compatibility if the phone cannot use canvas compression.
+                    callback(ev.target.result, file);
+                }
+            };
+
+            img.onerror = ()=>{
+                callback(ev.target.result, file);
+            };
+
+            img.src = ev.target.result;
+        };
+
+        reader.onerror = ()=>{
+            addLog('Erreur de lecture de l’image sur le téléphone', 'error');
+            showToast('Impossible de lire cette image', 'error');
+        };
+
+        reader.readAsDataURL(file);
+    };
+
     const showPreview = (dataUrl, file)=>{
         state.initialRefDataUrl = dataUrl;
         state.initialRefImage = file;
@@ -1634,13 +1698,20 @@ function setupRefImageHandlers(){
             addLog('Image refusée : taille > 15 Mo', 'error');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = ev=> showPreview(ev.target.result, file);
-        reader.onerror = ()=> {
-            addLog('Erreur de lecture de l’image sur le téléphone', 'error');
-            showToast('Impossible de lire cette image', 'error');
-        };
-        reader.readAsDataURL(file);
+        optimizeReferenceImage(file, (dataUrl, optimizedFile)=>{
+            showPreview(dataUrl, optimizedFile);
+            const optimizedKb = Math.round(
+                dataUrl.length * 0.75 / 1024
+            );
+            addLog(
+                'Image optimisée pour l’envoi serveur : ' +
+                optimizedKb +
+                ' Ko (original : ' +
+                Math.round(file.size / 1024) +
+                ' Ko)',
+                'success'
+            );
+        });
     });
 
     clearBtn?.addEventListener('click', ()=>{
