@@ -80,6 +80,14 @@ patchFile(indexPath, source => {
     }
   }
 
+  if (!out.includes('// __CSP_JOB_POST_RETRY__')) {
+    const needle = "        const res = await fetch('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(payload) });";
+    if (out.includes(needle)) {
+      const replacement = "        // __CSP_JOB_POST_RETRY__\n        let res = null;\n        let lastNetworkError = null;\n        for (let attempt = 1; attempt <= 3; attempt++) {\n          try {\n            res = await fetch('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', cache:'no-store', body:JSON.stringify(payload) });\n            break;\n          } catch (networkError) {\n            lastNetworkError = networkError;\n            addLog('Connexion au serveur échouée — nouvelle tentative ' + (attempt + 1) + '/3…', 'warn');\n            if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 2500 * attempt));\n          }\n        }\n        if (!res) throw lastNetworkError || new Error('Connexion au serveur impossible');";
+      out = out.replace(needle, replacement);
+    }
+  }
+
   if (!out.includes('// __CSP_V2_CLIENT_FRAME_FIX__')) {
     const frameNeedle = '            frames: Math.round(secondsPerScene * FRAME_RATE)';
     if (out.includes(frameNeedle)) {
