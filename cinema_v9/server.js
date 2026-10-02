@@ -1971,27 +1971,54 @@ app.post(
         )
     };
 
-    saveJobs(
-      jobs
-    );
+    // IMPORTANT:
+    // Never perform the synchronous jobs.json write before the 202 response.
+    // Large reference images can make saveJobs() block the event loop for seconds
+    // and delay "Job serveur créé". The client should receive the job id promptly.
+    const jobResponseStartedAt = Date.now();
 
-    // Launch immediately.
-    setImmediate(() => {
-    processJobs().catch(error => {
-        console.error('[WORKER LAUNCH ERROR]', error);
-    });
-});
-
-    return res
+    res
       .status(202)
       .json({
-
         id:
           id,
-
         status:
           'queued'
       });
+
+    const jobResponseTime =
+      Date.now() - jobResponseStartedAt;
+
+    console.log(
+      `[JOB CREATE TIMING] Réponse 202 envoyée en ${(jobResponseTime / 1000).toFixed(3)}s`
+    );
+
+    // Persist only after the HTTP response has been sent.
+    // The job remains available in memory immediately, so status/progress requests
+    // can continue normally while persistence is performed.
+    setImmediate(() => {
+      try {
+        const persistStartedAt = Date.now();
+
+        saveJobs(jobs);
+
+        console.log(
+          `[JOB CREATE TIMING] Persistance jobs.json après réponse: ${((Date.now() - persistStartedAt) / 1000).toFixed(3)}s`
+        );
+      } catch (error) {
+        console.error(
+          '[JOB CREATE PERSIST ERROR]',
+          error
+        );
+      }
+
+      processJobs().catch(error => {
+        console.error(
+          '[WORKER LAUNCH ERROR]',
+          error
+        );
+      });
+    });
   }
 );
 
