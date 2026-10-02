@@ -574,15 +574,36 @@ app.use(
 // ============================================================
 
 function loadJobs() {
-
   try {
-
-    return JSON.parse(
+    const parsed = JSON.parse(
       fs.readFileSync(
         JOBS_FILE,
         'utf8'
       )
     );
+
+    for (const job of Object.values(parsed)) {
+      // Active jobs without a persisted reference cannot safely resume after restart.
+      if (
+        job &&
+        !['completed', 'failed', 'cancelled'].includes(job.status) &&
+        !job.referenceImage &&
+        Array.isArray(job.scenes) &&
+        job.scenes.some(scene => scene.mode === 'reference' || scene.mode === 'keyframe')
+      ) {
+        job.status = 'failed';
+        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';
+        for (const scene of job.scenes) {
+          if (scene.status !== 'done') {
+            scene.status = 'failed';
+            scene.error = 'Job interrompu après redémarrage du serveur.';
+          }
+        }
+        job.updatedAt = Date.now();
+      }
+    }
+
+    return parsed;
 
   } catch (_) {
 
@@ -596,22 +617,101 @@ function pruneJobs(jobsData) {
     .sort(([, a], [, b]) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   for (const [id, job] of entries.slice(MAX_STORED_JOBS)) {
-    if (['completed', 'failed', 'cancelled'].includes(job.status)) delete jobsData[id];
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      delete jobsData[id];
+    }
   }
 
   for (const [id, job] of Object.entries(jobsData)) {
     if (
       ['completed', 'failed', 'cancelled'].includes(job.status) &&
       now - (job.updatedAt || job.createdAt || 0) > JOB_RETENTION_MS
-    ) delete jobsData[id];
+    ) {
+      delete jobsData[id];
+    }
   }
 }
 
+function makeJobsDiskSnapshot(jobsData) {
+  const snapshot = {};
+
+  for (const [id, job] of Object.entries(jobsData)) {
+    snapshot[id] = {
+      ...job,
+      // Never serialize the large master reference on every progress update.
+      referenceImage: null,
+      scenes: Array.isArray(job.scenes)
+        ? job.scenes.map(scene => {
+            const copy = { ...scene };
+            delete copy.images;
+            delete copy.first_frame;
+            delete copy.last_frame;
+            return copy;
+          })
+        : []
+    };
+  }
+
+  return snapshot;
+}
+
+function persistJobsNow(jobsData) {
+  const persistStartedAt = Date.now();
+  const snapshot = makeJobsDiskSnapshot(jobsData);
+  const tempFile = `${JOBS_FILE}.${process.pid}.tmp`;
+
+  fs.writeFileSync(
+    tempFile,
+    JSON.stringify(snapshot, null, 2),
+    'utf8'
+  );
+
+  fs.renameSync(
+    tempFile,
+    JOBS_FILE
+  );
+
+  console.log(
+    `[JOB PERSIST TIMING] Snapshot compact écrit en ${((Date.now() - persistStartedAt) / 1000).toFixed(3)}s`
+  );
+}
+
+let saveTimer = null;
+let saveInProgress = false;
+let saveAgain = false;
+
 function saveJobs(jobsData) {
   pruneJobs(jobsData);
-  const tempFile = `${JOBS_FILE}.${process.pid}.tmp`;
-  fs.writeFileSync(tempFile, JSON.stringify(jobsData, null, 2));
-  fs.renameSync(tempFile, JOBS_FILE);
+
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+  }
+
+  if (saveInProgress) {
+    saveAgain = true;
+    return;
+  }
+
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+
+    try {
+      saveInProgress = true;
+      persistJobsNow(jobsData);
+    } catch (error) {
+      console.error(
+        '[JOB PERSIST ERROR]',
+        error
+      );
+    } finally {
+      saveInProgress = false;
+
+      if (saveAgain) {
+        saveAgain = false;
+        saveJobs(jobsData);
+      }
+    }
+  }, 250);
 }
 
 let jobs =
@@ -1896,10 +1996,10 @@ app.post(
         )
     };
 
-    // IMPORTANT:
-    // Never perform the synchronous jobs.json write before the 202 response.
-    // Large reference images can make saveJobs() block the event loop for seconds
-    // and delay "Job serveur créé". The client should receive the job id promptly.
+    // Send the 202 immediately. Persistence is debounced and compact.
+    res.setHeader('X-Job-Id', id);
+    res.setHeader('Cache-Control', 'no-store');
+
     const jobResponseStartedAt = Date.now();
 
     res
@@ -1911,38 +2011,21 @@ app.post(
           'queued'
       });
 
-    const jobResponseTime =
-      Date.now() - jobResponseStartedAt;
-
     console.log(
-      `[JOB CREATE TIMING] Réponse 202 envoyée en ${(jobResponseTime / 1000).toFixed(3)}s`
+      `[JOB CREATE TIMING] Réponse 202 envoyée en ${((Date.now() - jobResponseStartedAt) / 1000).toFixed(3)}s`
     );
 
-    // Persist only after the HTTP response has been sent.
-    // The job remains available in memory immediately, so status/progress requests
-    // can continue normally while persistence is performed.
+    saveJobs(jobs);
+
     setImmediate(() => {
       try {
-        const persistStartedAt = Date.now();
-
-        saveJobs(jobs);
-
-        console.log(
-          `[JOB CREATE TIMING] Persistance jobs.json après réponse: ${((Date.now() - persistStartedAt) / 1000).toFixed(3)}s`
-        );
+        processJobs();
       } catch (error) {
-        console.error(
-          '[JOB CREATE PERSIST ERROR]',
-          error
-        );
-      }
-
-      processJobs().catch(error => {
         console.error(
           '[WORKER LAUNCH ERROR]',
           error
         );
-      });
+      }
     });
   }
 );
