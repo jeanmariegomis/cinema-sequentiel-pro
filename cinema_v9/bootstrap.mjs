@@ -80,7 +80,7 @@ patchFile(serverPath, source => {
   // The actual poll delay is local to pollVideo; patch that exact declaration.
   if (!out.includes('// __CSP_AGNES_POLL_2S__')) {
     const oldPoll = '  const pollDelay =\n    20000;';
-    const newPoll = "  // __CSP_AGNES_POLL_5S__\n  const pollDelay =\n    5000;";
+    const newPoll = "  // __CSP_AGNES_POLL_2S__\n  const pollDelay =\n    2000;";
     if (out.includes(oldPoll)) out = out.replace(oldPoll, newPoll);
   }
 
