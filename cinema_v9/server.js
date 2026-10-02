@@ -1131,9 +1131,7 @@ const queueRetryDelays = [
   30000,
   45000
 ];
-const rateLimitRetryDelays = [
-  120000
-];
+const rateLimitRetryDelays = [];
 
   for (
     let attempt = 0;
@@ -1419,11 +1417,13 @@ async function pollVideo(
     );
   }
 
+  // Poll Agnes every 2s so completed jobs are returned promptly.
+  // Keep the same ~15-minute maximum polling window as the previous 5s profile.
   const maxAttempts =
-    180;
+    450;
 
   const pollDelay =
-    20000;
+    2000;
 
   for (
     let attempt = 0;
