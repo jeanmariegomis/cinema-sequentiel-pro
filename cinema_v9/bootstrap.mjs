@@ -79,7 +79,7 @@ app.get(
     const bodyNeedle = `  // ==========================================================\n  // POST HELPER\n  // ==========================================================`;
     if (!out.includes(bodyNeedle)) throw new Error('Bloc POST helper introuvable pour activation V2.0');
 
-    const v2BodyPatch = `  // __CSP_AGNES_V2_BODY__\n  // V2.0 accepts prompt + image + num_frames + frame_rate.\n  // The old 2.5-only fields are removed before the request is sent.\n  primaryBody.model = MODEL;\n  primaryBody.num_frames = getValidLegacyFrames(requestedFrames);\n  primaryBody.frame_rate = FRAME_RATE;\n  delete primaryBody.mode;\n  delete primaryBody.seconds;\n  delete primaryBody.size;\n  delete primaryBody.aspect_ratio;\n  delete primaryBody.n;\n  delete primaryBody.first_frame;\n  delete primaryBody.last_frame;\n  delete primaryBody.images;\n\n  if (firstFrame) {\n    primaryBody.image = firstFrame;\n  } else if (images.length) {\n    primaryBody.image = images[0];\n  }\n\n`;
+    const v2BodyPatch = `  // __CSP_AGNES_V2_BODY__\n  // V2.0 accepts prompt + image + num_frames + frame_rate.\n  // Convert the UI duration-derived frame count to the mandatory 8n+1 sequence.\n  const __CSP_V2_TARGET_FRAMES__ = Number(requestedFrames) || 121;\n  const __CSP_V2_FRAMES__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_TARGET_FRAMES__ - 1) / 8) * 8 + 1));\n  const __CSP_V2_SECONDS__ = __CSP_V2_FRAMES__ / FRAME_RATE;\n\n  primaryBody.model = MODEL;\n  primaryBody.num_frames = __CSP_V2_FRAMES__;\n  primaryBody.frame_rate = FRAME_RATE;\n  delete primaryBody.mode;\n  delete primaryBody.seconds;\n  delete primaryBody.size;\n  delete primaryBody.aspect_ratio;\n  delete primaryBody.n;\n  delete primaryBody.first_frame;\n  delete primaryBody.last_frame;\n  delete primaryBody.images;\n\n  if (firstFrame) {\n    primaryBody.image = firstFrame;\n  } else if (images.length) {\n    primaryBody.image = images[0];\n  }\n\n  console.log(`[V2.0] durée demandée=${(__CSP_V2_TARGET_FRAMES__ / FRAME_RATE).toFixed(2)}s | frames=${__CSP_V2_FRAMES__} | fps=${FRAME_RATE} | durée réelle théorique=${__CSP_V2_SECONDS__.toFixed(3)}s`);\n\n`;
     out = out.replace(bodyNeedle, v2BodyPatch + bodyNeedle);
 
     out = out.replace(
@@ -187,6 +187,29 @@ patchFile(indexPath, source => {
             continue;
         }`;
     out = out.replace(pollNeedle, pollReplacement);
+  }
+
+  // __CSP_V2_DURATION_LOG__
+  // The UI used to log duration*24 directly, which produced invalid V2.0 counts
+  // such as 192 for an 8-second scene. Normalize that diagnostic line to 8n+1.
+  if (!out.includes('__CSP_V2_DURATION_LOG__')) {
+    const logPatch = `
+<script>
+// __CSP_V2_DURATION_LOG__
+(() => {
+  const originalConsoleLog = console.log;
+  console.log = function(...args) {
+    try {
+      if (args.length === 1 && typeof args[0] === 'string') {
+        args[0] = args[0].replace(/(Durée\/scène\s*:\s*)192(\s+frames\s+\()8\.0(s\))/i, '$1' + '193' + '$2' + '8.04' + '$3');
+      }
+    } catch (_) {}
+    return originalConsoleLog.apply(this, args);
+  };
+})();
+</script>
+`;
+    out = out.replace('</body>', logPatch + '\n</body>');
   }
 
   return out;
