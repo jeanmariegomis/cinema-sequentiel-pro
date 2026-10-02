@@ -33,3 +33,37 @@ try {
 } catch (error) {
   console.error('[AUTH FIX] failed:', error?.message || error);
 }
+
+// Mobile-safe logout: never wait for the logout request before navigating.
+// The server receives the cookie-clearing request in the background while the
+// browser immediately returns to the login page.
+const logoutScript = `
+<script id="csp-logout-hotfix">
+document.addEventListener('click', function(event) {
+  const button = event.target && event.target.closest ? event.target.closest('#logout-btn') : null;
+  if (!button) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  button.disabled = true;
+  try {
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      keepalive: true
+    }).catch(function() {});
+  } catch (_) {}
+  window.location.replace('/login.html?logout=1');
+}, true);
+</script>
+`;
+
+try {
+  const current = fs.readFileSync(indexPath, 'utf8');
+  if (!current.includes('id="csp-logout-hotfix"')) {
+    fs.writeFileSync(indexPath, current.replace('</body>', logoutScript + '\n</body>'), 'utf8');
+    console.log('[AUTH FIX] mobile logout hotfix installed');
+  }
+} catch (error) {
+  console.error('[AUTH FIX] logout hotfix failed:', error?.message || error);
+}
