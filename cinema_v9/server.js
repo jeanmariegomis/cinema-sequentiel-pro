@@ -408,6 +408,16 @@ const JOBS_FILE =
     'jobs.json'
   );
 
+const MAX_VIDEO_SECONDS = 12;
+const AGNES_REQUEST_TIMEOUT_MS = 45000;
+const AGNES_POLL_TIMEOUT_MS = 30000;
+const MAX_CONCURRENT_JOBS = Math.max(
+  1,
+  Math.min(4, Number(process.env.JOB_CONCURRENCY) || 2)
+);
+const JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_STORED_JOBS = 100;
+
 fs.mkdirSync(
   DATA_DIR,
   {
@@ -579,18 +589,28 @@ function loadJobs() {
   }
 }
 
-function saveJobs(
-  jobsData
-) {
+function pruneJobs(jobsData) {
+  const now = Date.now();
+  const entries = Object.entries(jobsData)
+    .sort(([, a], [, b]) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
-  fs.writeFileSync(
-    JOBS_FILE,
-    JSON.stringify(
-      jobsData,
-      null,
-      2
-    )
-  );
+  for (const [id, job] of entries.slice(MAX_STORED_JOBS)) {
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) delete jobsData[id];
+  }
+
+  for (const [id, job] of Object.entries(jobsData)) {
+    if (
+      ['completed', 'failed', 'cancelled'].includes(job.status) &&
+      now - (job.updatedAt || job.createdAt || 0) > JOB_RETENTION_MS
+    ) delete jobsData[id];
+  }
+}
+
+function saveJobs(jobsData) {
+  pruneJobs(jobsData);
+  const tempFile = `${JOBS_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(jobsData, null, 2));
+  fs.renameSync(tempFile, JOBS_FILE);
 }
 
 let jobs =
@@ -671,6 +691,21 @@ async function sleep(ms) {
         ms
       )
   );
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Requête Agnes expirée après ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function extractHttpStatus(
@@ -821,11 +856,11 @@ async function createVideoTask(
       )
     );
 
-const seconds =
+  const seconds =
   Math.max(
     4,
     Math.min(
-      12,
+      MAX_VIDEO_SECONDS,
       Math.round(
         rawSeconds
       )
@@ -1010,7 +1045,7 @@ const seconds =
 
     const createStartedAt = Date.now();
     const response =
-      await fetch(
+      await fetchWithTimeout(
         `${API_BASE}/videos`,
         {
           method:
@@ -1025,11 +1060,9 @@ const seconds =
               `Bearer ${apiKeyToUse}`
           },
 
-          body:
-            JSON.stringify(
-              body
-            )
-        }
+          body: JSON.stringify(body)
+        },
+        AGNES_REQUEST_TIMEOUT_MS
       );
 
     const txt =
@@ -1414,7 +1447,7 @@ async function pollVideo(
 
 try {
   response =
-    await fetch(
+    await fetchWithTimeout(
       url,
       {
         method:
@@ -1424,7 +1457,8 @@ try {
           'Authorization':
             `Bearer ${apiKeyToUse}`
         }
-      }
+      },
+      AGNES_POLL_TIMEOUT_MS
     );
 } catch (fetchError) {
   console.warn(
@@ -1440,9 +1474,9 @@ try {
 
     if (!response.ok) {
 
-    if (response.status === 429) {
+    if (response.status === 429 || response.status === 503) {
     console.warn(
-        `[VIDEO POLL] Limite de requêtes de statut atteinte. Nouvelle tentative dans 30 secondes.`
+        `[VIDEO POLL] Agnes répond ${response.status}. Nouvelle tentative dans 30 secondes.`
     );
 
     await sleep(30000);
@@ -1555,48 +1589,20 @@ return videoUrl;
 // JOB WORKER
 // ============================================================
 
-let workerBusy =
-  false;
+const activeJobIds = new Set();
 
-async function processJobs() {
+function updateJob(job) {
+  job.updatedAt = Date.now();
+  saveJobs(jobs);
+}
 
-  if (workerBusy) {
-    return;
-  }
-
-  const apiKeyToUse =
-    process.env.AGNES_API_KEY ||
-    AGNES_API_KEY;
-
-  if (!apiKeyToUse) {
-    return;
-  }
-
-  const job =
-    Object.values(
-      jobs
-    ).find(
-      j =>
-        j.status === 'queued' ||
-        j.status === 'processing'
-    );
-
-  if (!job) {
-    return;
-  }
-
-  workerBusy =
-    true;
-
+async function processJob(job) {
   try {
 
     job.status =
       'processing';
 
-    job.updatedAt =
-      Date.now();
-
-    saveJobs(jobs);
+    updateJob(job);
 
     for (
       const scene of job.scenes
@@ -1618,40 +1624,35 @@ async function processJobs() {
       scene.status =
         'processing';
 
-      job.updatedAt =
-        Date.now();
-
-      saveJobs(jobs);
+      updateJob(job);
 
       try {
 
-        const created =
-          await createVideoTask(
-            scene,
-            {
-              get: () => ''
-            }
-          );
-
-        scene.videoId =
-          created.videoId;
-
-        scene.model =
-          created.model;
-
-        job.updatedAt =
-          Date.now();
-
-        saveJobs(jobs);
+        if (!scene.videoId) {
+          const sceneInput = {
+            ...scene,
+            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
+          };
+          const created = await createVideoTask(sceneInput, { get: () => '' });
+          scene.videoId = created.videoId;
+          scene.model = created.model;
+          updateJob(job);
+        }
 
         scene.videoUrl =
           await pollVideo(
-            created.videoId,
+            scene.videoId,
             {
               get: () => ''
             },
-            created.model
+            scene.model || MODEL
           );
+
+        if (job.status === 'cancelled') {
+          scene.videoUrl = null;
+          updateJob(job);
+          break;
+        }
 
         scene.status =
           'done';
@@ -1693,21 +1694,17 @@ async function processJobs() {
         job.status =
           'failed';
 
-        job.updatedAt =
-          Date.now();
-
-        saveJobs(jobs);
+        updateJob(job);
 
         break;
       }
 
-      job.updatedAt =
-        Date.now();
-
-      saveJobs(jobs);
+      updateJob(job);
     }
 
-    if (
+    if (job.status === 'cancelled') {
+      // Preserve the cancellation request even if the current remote poll ended.
+    } else if (
       job.scenes.length > 0 &&
       job.scenes.every(
         s =>
@@ -1729,22 +1726,34 @@ async function processJobs() {
         'queued';
     }
 
-    job.updatedAt =
-      Date.now();
-
-    saveJobs(jobs);
+    updateJob(job);
 
   } catch (error) {
 
-    console.error(
-      '[WORKER ERROR]',
-      error
-    );
+    console.error('[WORKER ERROR]', job.id, error);
 
   } finally {
+    activeJobIds.delete(job.id);
+  }
+}
 
-    workerBusy =
-      false;
+function processJobs() {
+  const apiKeyToUse = process.env.AGNES_API_KEY || AGNES_API_KEY;
+  if (!apiKeyToUse) return;
+
+  const availableSlots = MAX_CONCURRENT_JOBS - activeJobIds.size;
+  if (availableSlots <= 0) return;
+
+  const candidates = Object.values(jobs)
+    .filter(job =>
+      (job.status === 'queued' || job.status === 'processing') &&
+      !activeJobIds.has(job.id)
+    )
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+  for (const job of candidates.slice(0, availableSlots)) {
+    activeJobIds.add(job.id);
+    void processJob(job);
   }
 }
 
@@ -1802,10 +1811,7 @@ app.post(
       });
     }
 
-    const {
-      scenes
-    } =
-      req.body || {};
+    const { scenes, referenceImage } = req.body || {};
 
     if (
       !Array.isArray(scenes) ||
@@ -1830,6 +1836,20 @@ app.post(
       });
     }
 
+    const suppliedReference =
+      typeof referenceImage === 'string' && referenceImage.startsWith('data:image/')
+        ? referenceImage
+        : null;
+    const legacyReference =
+      !suppliedReference && scenes.length > 0 &&
+      typeof scenes[0]?.images?.[0] === 'string'
+        ? scenes[0].images[0]
+        : null;
+    const sharedReference = suppliedReference || legacyReference;
+    const hasSharedLegacyReference = Boolean(sharedReference) && scenes.every(scene =>
+      Array.isArray(scene.images) && scene.images.length === 1 && scene.images[0] === sharedReference
+    );
+
     const id =
       crypto.randomUUID();
 
@@ -1848,6 +1868,8 @@ app.post(
 
       error:
         null,
+
+      referenceImage: sharedReference,
 
       scenes:
         scenes.map(
@@ -1919,7 +1941,9 @@ app.post(
                 null,
 
               images:
-                images,
+                hasSharedLegacyReference || suppliedReference
+                  ? []
+                  : images,
 
               frames:
                 Number(

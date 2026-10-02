@@ -724,13 +724,13 @@ Il tourne la tête vers la rue. Un taxi passe lentement derrière lui. Il hésit
                         <div class="ro-label">~10 s</div>
                         <div class="ro-desc">240 f</div>
                     </div>
-                    <div class="radio-option selected" data-frames="480">
-    <div class="ro-label">~20 s</div>
-    <div class="ro-desc">480 f · maximum autorisé</div>
+                    <div class="radio-option selected" data-frames="288">
+    <div class="ro-label">~12 s</div>
+    <div class="ro-desc">288 f · maximum configuré</div>
                     </div>
                 </div>
                 <div class="storyboard-hint" style="margin-top:0.6rem;">
-                    ℹ️ Agnes Video 2.5 Flash accepte les scènes de <strong>4 à 20 secondes</strong>. Les durées proposées ici respectent directement la limite de l’API.
+                    ℹ️ Agnes Video 2.5 Flash est configuré pour des scènes de <strong>4 à 12 secondes</strong>. Les durées proposées ici respectent directement la limite du serveur.
                 </div>
             </div>
             <div class="control-row">
@@ -836,6 +836,7 @@ document.addEventListener('DOMContentLoaded',function(){
 // CONFIG
 // ══════════════════════════════════════════════════════════════════
 const FRAME_RATE = 24;
+const MAX_VIDEO_SECONDS = 12;
 
 let createIntervalMs = 62000;
 const CREATE_INTERVAL_MIN = 62000;
@@ -1071,7 +1072,7 @@ const state = {
     stopRequested: false,
     completed: 0,
     failed: 0,
-    durationFrames: 480,
+    durationFrames: 288,
     quality: 'anime3d',
     motion: 'auto',
     creationAttemptsSinceLastError: 0,
@@ -1477,15 +1478,15 @@ async function startGeneration() {
     document.getElementById('gallery').classList.add('hidden');
     renderScenes(); renderQueue();
 
-    const secondsPerScene = Math.max(4, Math.min(20, Math.round(state.durationFrames / FRAME_RATE)));
+    const secondsPerScene = Math.max(4, Math.min(MAX_VIDEO_SECONDS, Math.round(state.durationFrames / FRAME_RATE)));
     const payload = {
+        referenceImage: state.initialRefDataUrl,
         scenes: state.scenes.map((scene, i) => ({
             prompt: buildScenePrompt(scene.text, i, state.scenes.length, true),
             mode: 'reference',
             seconds: secondsPerScene,
             size: '720P',
             aspect_ratio: '9:16',
-            images: [state.initialRefDataUrl],
             frames: Math.round(secondsPerScene * FRAME_RATE)
         }))
     };

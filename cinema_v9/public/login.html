@@ -166,35 +166,6 @@ button:disabled{opacity:.6}
     Accès protégé par le serveur Render
   </div>
 
-  <!-- CONSOLE AUTH -->
-  <div style="background:red;color:white;padding:20px;margin-top:20px;font-size:20px;font-weight:bold;">
-TEST VERSION DEBUG 123
-  </div>
-  <section class="debug" style="display:block!important;visibility:visible!important;position:relative!important;background:#050505!important;color:#00ff88!important;padding:20px!important;margin-top:20px!important;border:2px solid #00ff88!important;border-radius:12px!important;">
-
-    <div class="debug-head">
-      <span>🛠️ Console Auth</span>
-
-      <span>
-        <span id="debug-status" class="debug-status">
-          Initialisation...
-        </span>
-
-        <button
-          id="clear-console"
-          class="clear"
-          type="button"
-        >
-          Effacer
-        </button>
-      </span>
-    </div>
-
-    <div id="console" class="console" style="display:block!important;min-height:120px!important;background:#000!important;color:#00ff88!important;padding:12px!important;font-family:monospace!important;">
-CONSOLE AUTH — TEST OK
-</div>
-  </section>
-
 </main>
 
 <script>
@@ -232,6 +203,7 @@ CONSOLE AUTH — TEST OK
   }
 
   function log(message, type = 'info') {
+    if (!consoleBox) return;
     const line = document.createElement('div');
     line.className = `log log-${type}`;
     line.textContent = `[${now()}] ${message}`;
@@ -242,16 +214,17 @@ CONSOLE AUTH — TEST OK
   }
 
   function status(message) {
-    debugStatus.textContent = message;
+    if (debugStatus) debugStatus.textContent = message;
   }
 
-  clearButton.addEventListener('click', () => {
+  clearButton?.addEventListener('click', () => {
     try { localStorage.removeItem(DEBUG_KEY); } catch (_) {}
     consoleBox.innerHTML = '';
     log('Console effacée');
   });
 
   function restoreSavedLogs() {
+    if (!consoleBox) return;
     const logs = getSavedLogs();
     if (!logs.length) return;
     const header = document.createElement('div');
