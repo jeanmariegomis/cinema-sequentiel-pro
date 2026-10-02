@@ -412,9 +412,10 @@ const JOBS_FILE =
 const MAX_VIDEO_SECONDS = 12;
 const AGNES_REQUEST_TIMEOUT_MS = 45000;
 const AGNES_POLL_TIMEOUT_MS = 30000;
+// Agnes free queue: process one server job at a time by default.
 const MAX_CONCURRENT_JOBS = Math.max(
   1,
-  Math.min(4, Number(process.env.JOB_CONCURRENCY) || 2)
+  Math.min(4, Number(process.env.JOB_CONCURRENCY) || 1)
 );
 const JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_STORED_JOBS = 100;
