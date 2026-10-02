@@ -521,6 +521,84 @@ body.auth-checking > :not(#auth-loading){visibility:hidden!important;}
 #auth-loading .auth-spinner{width:28px;height:28px;margin:0 auto 14px;border:3px solid rgba(139,92,246,.25);border-top-color:#8b5cf6;border-radius:50%;animation:authspin .8s linear infinite;}
 @keyframes authspin{to{transform:rotate(360deg)}}
 </style>
+
+<style id="generate-button-guard">
+/* __CSP_GENERATE_BUTTON_GUARD__ */
+body.auth-checking #generate-btn,
+body #generate-btn {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    z-index: 20 !important;
+}
+body.auth-checking #generate-btn:disabled {
+    opacity: 0.65 !important;
+}
+</style>
+<script id="generate-button-repair">
+(function(){
+  function syncGenerateButton(){
+    const btn = document.getElementById('generate-btn');
+    if (!btn) return;
+
+    btn.style.display = 'block';
+    btn.style.visibility = 'visible';
+    btn.style.opacity = '1';
+
+    const scenes = Array.isArray(window.state?.scenes)
+      ? window.state.scenes.length > 0
+      : !!document.querySelector('#scene-list .scene-card');
+
+    const bible = !!document.getElementById('bible-input')?.value.trim();
+    const ref = !!window.state?.initialRefDataUrl ||
+      !!document.querySelector('#ref-preview[src]:not([src=""])');
+
+    const running = !!window.state?.isRunning;
+    btn.disabled = !(scenes && bible && ref) || running;
+    btn.title =
+      btn.disabled
+        ? 'Ajoutez la bible visuelle, découpez le scénario et ajoutez l’image de référence.'
+        : 'Lancer la génération du film';
+  }
+
+  function installGenerateButtonRepair(){
+    const btn = document.getElementById('generate-btn');
+    if (!btn) return;
+
+    ['input','change','keyup'].forEach(evt => {
+      document.getElementById('bible-input')?.addEventListener(evt, syncGenerateButton);
+      document.getElementById('storyboard-input')?.addEventListener(evt, syncGenerateButton);
+      document.getElementById('ref-file-input')?.addEventListener(evt, syncGenerateButton);
+    });
+
+    document.getElementById('parse-scenes-btn')?.addEventListener('click', () => {
+      setTimeout(syncGenerateButton, 50);
+      setTimeout(syncGenerateButton, 500);
+    });
+
+    const observer = new MutationObserver(syncGenerateButton);
+    observer.observe(btn.parentElement || document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class','style','disabled']
+    });
+
+    syncGenerateButton();
+    setTimeout(syncGenerateButton, 250);
+    setTimeout(syncGenerateButton, 1000);
+    setTimeout(syncGenerateButton, 2500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installGenerateButtonRepair, {once:true});
+  } else {
+    installGenerateButtonRepair();
+  }
+})();
+</script>
+
 </head>
 <body class="auth-checking">
 <style id="logout-visible-fix">#logout-btn{position:fixed!important;top:12px!important;right:12px!important;z-index:2147483647!important;display:inline-flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;align-items:center;justify-content:center;padding:.65rem .9rem!important;border:1px solid #34343f!important;border-radius:9px!important;background:#14141a!important;color:#fff!important;font-weight:800!important;cursor:pointer!important;box-shadow:0 6px 20px rgba(0,0,0,.35)!important}</style>
