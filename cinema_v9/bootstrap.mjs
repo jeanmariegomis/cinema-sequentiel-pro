@@ -53,9 +53,11 @@ app.get(
 }, 'server.js');
 
 patchFile(indexPath, source => {
-  const needle = '        const data = await res.json();';
-  if (!source.includes('cinema-v13-safe-response')) {
-    if (!source.includes(needle)) throw new Error('Lecture res.json() de /api/jobs introuvable');
+  let out = source;
+
+  const createNeedle = '        const data = await res.json();';
+  if (!out.includes('cinema-v13-safe-response')) {
+    if (!out.includes(createNeedle)) throw new Error('Lecture res.json() de /api/jobs introuvable');
     const replacement = `        /* cinema-v13-safe-response: never assume a non-empty JSON body */
         const responseText = await res.text();
         let data = null;
@@ -105,9 +107,48 @@ patchFile(indexPath, source => {
         if (!data || !data.id) {
             throw new Error('Le serveur a créé ou accepté la demande mais n’a renvoyé aucun identifiant de job.');
         }`;
-    return source.replace(needle, replacement);
+    out = out.replace(createNeedle, replacement);
   }
-  return source;
+
+  const pollNeedle = `        const res = await fetch('/api/jobs/'+encodeURIComponent(jobId));\n        const job = await res.json();\n        if (!res.ok) throw new Error(job.error || 'Job introuvable');`;
+  if (!out.includes('cinema-v13-safe-poll')) {
+    if (!out.includes(pollNeedle)) throw new Error('Lecture res.json() du polling /api/jobs/:id introuvable');
+    const pollReplacement = `        /* cinema-v13-safe-poll: tolerate empty/transient proxy responses */
+        const res = await fetch('/api/jobs/'+encodeURIComponent(jobId)+'?t='+Date.now(), {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
+        });
+        const pollText = await res.text();
+        let job = null;
+
+        if (pollText.trim()) {
+            try {
+                job = JSON.parse(pollText);
+            } catch (parseError) {
+                if (!res.ok) {
+                    throw new Error('Serveur HTTP ' + res.status + ' : ' + pollText.slice(0, 800));
+                }
+                addLog('Réponse de suivi non JSON — nouvelle tentative…', 'warn');
+            }
+        } else {
+            addLog('Réponse vide du serveur — nouvelle tentative dans 1,5 s…', 'warn');
+        }
+
+        if (!res.ok) {
+            if (job && job.error) throw new Error(job.error);
+            throw new Error('Job HTTP ' + res.status);
+        }
+
+        if (!job) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            continue;
+        }`;
+    out = out.replace(pollNeedle, pollReplacement);
+  }
+
+  return out;
 }, 'public/index.html');
 
 await import('./server.js');
