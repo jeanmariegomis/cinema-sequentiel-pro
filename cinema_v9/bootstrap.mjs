@@ -4,6 +4,7 @@ import path from 'path';
 const root = process.cwd();
 const serverPath = path.join(root, 'server.js');
 const indexPath = path.join(root, 'public', 'index.html');
+const enableV2Compat = process.env.CSP_ENABLE_V2_COMPAT === 'true';
 
 function patchFile(filePath, transform, label) {
   const original = fs.readFileSync(filePath, 'utf8');
@@ -40,14 +41,14 @@ patchFile(serverPath, source => {
     }
   }
 
-  if (!out.includes('// __CSP_AGNES_V2_TEST_MODE__')) {
+  if (enableV2Compat && !out.includes('// __CSP_AGNES_V2_TEST_MODE__')) {
     const modelNeedle = "const MODEL =\n  'agnes-video-2.5-flash';\n\nconst LEGACY_MODEL =\n  'agnes-video-2.5-flash';";
     if (out.includes(modelNeedle)) {
       out = out.replace(modelNeedle, "// __CSP_AGNES_V2_TEST_MODE__\nconst __CSP_V2_MODEL__ = 'agnes-video-v2.0';\n\nconst MODEL =\n  __CSP_V2_MODEL__;\n\nconst LEGACY_MODEL =\n  __CSP_V2_MODEL__;");
     }
   }
 
-  if (!out.includes('// __CSP_V2_DURATION_FIX__')) {
+  if (enableV2Compat && !out.includes('// __CSP_V2_DURATION_FIX__')) {
     const oldFrameLine = '  primaryBody.num_frames = getValidLegacyFrames(requestedFrames);';
     if (out.includes(oldFrameLine)) {
       const fix = "  // __CSP_V2_DURATION_FIX__\n  const __CSP_V2_TARGET_FRAMES_FIX__ = Number(requestedFrames) || 193;\n  const __CSP_V2_FRAMES_FIX__ = Math.max(9, Math.min(441, Math.round((__CSP_V2_TARGET_FRAMES_FIX__ - 1) / 8) * 8 + 1));\n  primaryBody.num_frames = __CSP_V2_FRAMES_FIX__;\n  primaryBody.frame_rate = FRAME_RATE;\n  console.log('[V2.0] frame normalization: requested=' + __CSP_V2_TARGET_FRAMES_FIX__ + ', sent=' + __CSP_V2_FRAMES_FIX__ + ', duration=' + (__CSP_V2_FRAMES_FIX__ / FRAME_RATE).toFixed(3) + 's');";
@@ -55,7 +56,7 @@ patchFile(serverPath, source => {
     }
   }
 
-  if (!out.includes('// __CSP_V2_BODY_FIX__')) {
+  if (enableV2Compat && !out.includes('// __CSP_V2_BODY_FIX__')) {
     const postMarker = '  const response =';
     const pos = out.indexOf(postMarker);
     if (pos !== -1) {
@@ -64,7 +65,7 @@ patchFile(serverPath, source => {
     }
   }
 
-  if (!out.includes('// __CSP_V2_BALANCED_SPEED_PROFILE__')) {
+  if (enableV2Compat && !out.includes('// __CSP_V2_BALANCED_SPEED_PROFILE__')) {
     const marker = "  console.log('[V2.0] quality/coherence profile:";
     const pos = out.indexOf(marker);
     if (pos !== -1) {
@@ -77,7 +78,7 @@ patchFile(serverPath, source => {
   }
 
   // The actual poll delay is local to pollVideo; patch that exact declaration.
-  if (!out.includes('// __CSP_AGNES_POLL_5S__')) {
+  if (!out.includes('// __CSP_AGNES_POLL_2S__')) {
     const oldPoll = '  const pollDelay =\n    20000;';
     const newPoll = "  // __CSP_AGNES_POLL_5S__\n  const pollDelay =\n    5000;";
     if (out.includes(oldPoll)) out = out.replace(oldPoll, newPoll);
