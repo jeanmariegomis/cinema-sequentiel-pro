@@ -388,11 +388,12 @@ function getApiKeyForRequest(req) {
 // VIDEO CONFIG
 // ============================================================
 
+// Use the free/usable Agnes V2.0 profile; keep the realism improvements.
 const MODEL =
-  'agnes-video-2.5-flash';
+  'agnes-video-v2.0';
 
 const LEGACY_MODEL =
-  'agnes-video-2.5-flash';
+  'agnes-video-v2.0';
 
 const FRAME_RATE = 24;
 
@@ -970,6 +971,16 @@ async function createVideoTask(
       images.length
     );
 
+  // Agnes V2.0 request profile: preserve the tested frame-based schema.
+  const targetFps = 15;
+  const targetFrames = Math.max(
+    9,
+    Math.min(
+      441,
+      Math.round((seconds * targetFps - 1) / 8) * 8 + 1
+    )
+  );
+
   const primaryBody = {
 
     model:
@@ -978,72 +989,38 @@ async function createVideoTask(
     prompt:
       enhancedPrompt,
 
-    mode:
-      mode,
+    num_frames:
+      targetFrames,
 
-    seconds:
-      String(seconds),
+    frame_rate:
+      targetFps,
 
-    size:
-      scene.size ||
-      '720P',
+    width:
+      720,
 
-    aspect_ratio:
-      scene.aspect_ratio ||
-      '9:16',
-
-    n:
-      1
+    height:
+      1280
   };
 
-  if (
-    mode === 'keyframe'
-  ) {
+  // Agnes V2.0 accepts a single image anchor in this profile.
+  // Keep keyframe/reference intent, but send the first authoritative image.
+  const authoritativeImage =
+    firstFrame ||
+    images[0] ||
+    null;
 
-    if (firstFrame) {
-      primaryBody.first_frame =
-        firstFrame;
-    }
-
-    if (lastFrame) {
-      primaryBody.last_frame =
-        lastFrame;
-    }
-
-    if (
-      !primaryBody.first_frame &&
-      !primaryBody.last_frame
-    ) {
-
-      throw new Error(
-        'Mode keyframe sélectionné sans image de départ ou de fin'
-      );
-    }
+  if ((mode === 'keyframe' || mode === 'reference') && !authoritativeImage) {
+    throw new Error(
+      'Mode image sélectionné sans image de référence'
+    );
   }
 
-  if (
-    mode === 'reference'
-  ) {
-
-    if (!images.length) {
-
-      throw new Error(
-        'Mode reference sélectionné sans image de référence'
-      );
-    }
-
-    primaryBody.images =
-      images;
+  if (authoritativeImage) {
+    primaryBody.image = authoritativeImage;
   }
 
   // ==========================================================
-  // MODERN AGNES 2.5 REQUEST
-  // ==========================================================
-  //
-  // The 2.5 Flash API uses the modern video schema:
-  // model + prompt + mode + seconds + size + aspect_ratio
-  // plus reference/keyframe media when requested.
-  // Do not send legacy v2.0 frame-count parameters.
+  // AGNES V2.0 REQUEST
   // ==========================================================
 
   console.log(
@@ -1052,12 +1029,13 @@ async function createVideoTask(
       model: MODEL,
       mode,
       seconds,
-      size: scene.size || '720P',
-      aspect_ratio: scene.aspect_ratio || '9:16',
+      frames: targetFrames,
+      fps: targetFps,
+      size: '720x1280',
       referenceImages: images.length,
       keyframeStart: Boolean(firstFrame),
       keyframeEnd: Boolean(lastFrame),
-      realismProfile: 'live-action-photorealistic-v1'
+      realismProfile: 'live-action-photorealistic-v2'
     })
   );
 
@@ -1199,9 +1177,7 @@ const queueRetryDelays = [
   30000,
   45000
 ];
-const rateLimitRetryDelays = [
-  120000
-];
+const rateLimitRetryDelays = [];
 
   for (
     let attempt = 0;
@@ -1389,31 +1365,38 @@ throw new Error(
       requestedFrames
     );
 
+  const fallbackFrames = Math.max(
+    9,
+    Math.min(
+      441,
+      Math.round((seconds * targetFps - 1) / 8) * 8 + 1
+    )
+  );
+
   const legacyBody = {
 
     model:
       LEGACY_MODEL,
 
     prompt:
-      prompt,
+      enhancedPrompt,
 
     num_frames:
-      validFrames,
+      fallbackFrames,
 
     frame_rate:
-      FRAME_RATE
+      targetFps,
+
+    width:
+      720,
+
+    height:
+      1280
   };
 
   // Legacy API accepts one image.
-  if (firstFrame) {
-
-    legacyBody.image =
-      firstFrame;
-
-  } else if (images.length) {
-
-    legacyBody.image =
-      images[0];
+  if (authoritativeImage) {
+    legacyBody.image = authoritativeImage;
   }
 
   console.warn(
@@ -1491,7 +1474,7 @@ async function pollVideo(
     180;
 
   const pollDelay =
-    20000;
+    5000;
 
   for (
     let attempt = 0;
