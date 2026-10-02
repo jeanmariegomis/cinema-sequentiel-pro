@@ -3,6 +3,7 @@ import path from 'path';
 
 const root = process.cwd();
 const indexPath = path.join(root, 'public', 'index.html');
+const serverPath = path.join(root, 'server.js');
 
 function removeScriptById(html, id) {
   const re = new RegExp(`<script\\s+id=["']${id}["'][^>]*>[\\s\\S]*?<\\/script>\\s*`, 'i');
@@ -43,6 +44,7 @@ function removeElementById(html, id) {
 try {
   let html = fs.readFileSync(indexPath, 'utf8');
   const before = html.length;
+  const original = html;
 
   html = removeStyleById(html, 'auth-guard-style');
   html = removeScriptById(html, 'auth-guard-script');
@@ -52,14 +54,35 @@ try {
     '$1 class="$2$3"'
   );
 
-  if (html !== fs.readFileSync(indexPath, 'utf8')) {
+  if (html !== original) {
     fs.writeFileSync(indexPath, html, 'utf8');
     console.log('[AUTH CLEAN] client session gate removed:', before, '->', html.length);
   } else {
     console.log('[AUTH CLEAN] no client session gate found');
   }
 } catch (error) {
-  console.error('[AUTH CLEAN] failed:', error?.message || error);
+  console.error('[AUTH CLEAN] index cleanup failed:', error?.message || error);
+}
+
+try {
+  let server = fs.readFileSync(serverPath, 'utf8');
+
+  if (!server.includes('// __CSP_SERVER_AUTH_GATE__')) {
+    const marker = '// APPLICATION';
+    const middleware = `// __CSP_SERVER_AUTH_GATE__\n// The server is authoritative for page access. This removes the need for a\n// client-side polling overlay that can freeze the UI when /api/auth/status hangs.\napp.use((req, res, next) => {\n  if (req.method !== 'GET') return next();\n  if (req.path === '/login.html') return next();\n  if (req.path.startsWith('/api/')) return next();\n\n  if (validAuthToken(getCookie(req, 'csp_auth'))) return next();\n\n  return res.redirect(303, '/login.html?next=/');\n});\n\n`;
+
+    if (server.includes(marker)) {
+      server = server.replace(marker, middleware + marker);
+      fs.writeFileSync(serverPath, server, 'utf8');
+      console.log('[AUTH CLEAN] server-side page gate installed');
+    } else {
+      console.warn('[AUTH CLEAN] server application marker not found');
+    }
+  } else {
+    console.log('[AUTH CLEAN] server-side page gate already installed');
+  }
+} catch (error) {
+  console.error('[AUTH CLEAN] server patch failed:', error?.message || error);
 }
 
 // Continue with the existing production bootstrap so all existing
