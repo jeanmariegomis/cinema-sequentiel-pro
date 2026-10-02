@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const indexPath = path.join(process.cwd(), 'public', 'index.html');
+const serverPath = path.join(process.cwd(), 'server.js');
 
 try {
   let source = fs.readFileSync(indexPath, 'utf8');
@@ -15,26 +16,63 @@ try {
     .replace(/<script[^>]*id=["']csp-auth-gate-runtime-script["'][^>]*>[\s\S]*?<\/script>\s*/i, '')
     .replace(/<style[^>]*id=["']csp-auth-gate-runtime-fix["'][^>]*>[\s\S]*?<\/style>\s*/i, '')
     .replace(/<body([^>]*)\sclass=["']([^"']*)auth-checking([^"']*)["']/i, '<body$1 class="$2$3"')
-    // Remove the original async logout handler. It awaited fetch() and could
-    // leave the mobile browser apparently frozen when the API is slow.
     .replace(/<script[^>]*id=["']logout-script["'][^>]*>[\s\S]*?<\/script>\s*/i, '');
 
-  // Remove static session overlays left by older versions.
   source = source.replace(
     /<[^>]+(?:id|class)=["'][^"']*(?:auth-loading|session-loading|auth-checking|session-checking)[^"']*["'][^>]*>[\s\S]*?<\/[^>]+>/gi,
     ''
   );
 
-  const logoutScript = `
+  fs.writeFileSync(indexPath, source, 'utf8');
+  console.log('[AUTH FIX] auth gate cleaned', { beforeLength, afterLength: source.length });
+} catch (error) {
+  console.error('[AUTH FIX] index cleanup failed:', error?.message || error);
+}
+
+// ============================================================
+// Deterministic logout route
+// ============================================================
+// The previous client implementation raced: it sent an async logout request
+// and navigated to /login.html before the cookie was necessarily cleared.
+// That could send the user back through the private gate. Install a GET route
+// that clears the cookie and redirects in ONE browser navigation.
+try {
+  let server = fs.readFileSync(serverPath, 'utf8');
+  const marker = "  app.post(\n    '/api/auth/logout',";
+
+  if (!server.includes("app.get(\n    '/api/auth/logout'")) {
+    const pos = server.indexOf(marker);
+    if (pos !== -1) {
+      const route = `  app.get(\n    '/api/auth/logout',\n    (req, res) => {\n      res.setHeader(\n        'Cache-Control',\n        'no-store'\n      );\n      res.setHeader(\n        'Set-Cookie',\n        'csp_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'\n      );\n      return res.redirect(303, '/login.html?logout=1');\n    }\n  );\n\n`;
+      server = server.slice(0, pos) + route + server.slice(pos);
+      fs.writeFileSync(serverPath, server, 'utf8');
+      console.log('[AUTH FIX] deterministic GET logout route installed');
+    } else {
+      console.warn('[AUTH FIX] POST logout route marker not found; server unchanged');
+    }
+  } else {
+    console.log('[AUTH FIX] deterministic GET logout route already installed');
+  }
+} catch (error) {
+  console.error('[AUTH FIX] server logout patch failed:', error?.message || error);
+}
+
+// ============================================================
+// Client logout: one navigation, no fetch, no beacon, no race
+// ============================================================
+const logoutScript = `
 <script id="csp-logout-hotfix">
 (function () {
   if (window.__cspLogoutHotfixInstalled) return;
   window.__cspLogoutHotfixInstalled = true;
 
-  function isLogoutControl(el) {
-    if (!el || !(el instanceof Element)) return false;
+  function getLogoutControl(target) {
+    if (!target) return null;
+    const el = target.nodeType === 1 ? target : target.parentElement;
+    if (!el || !el.closest) return null;
     const node = el.closest('button, a, [role="button"], input[type="button"], input[type="submit"]');
-    if (!node) return false;
+    if (!node) return null;
+
     const signature = [
       node.id || '',
       node.getAttribute('name') || '',
@@ -43,49 +81,37 @@ try {
       node.textContent || '',
       node.value || ''
     ].join(' ').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
-    return /\\b(deconnexion|logout|se deconnecter|sign out|log out)\\b/i.test(signature);
+
+    return /\\b(deconnexion|se deconnecter|logout|log out|sign out)\\b/i.test(signature)
+      ? node
+      : null;
   }
 
-  function logoutNow(event) {
-    if (!isLogoutControl(event.target)) return;
+  function handleLogout(event) {
+    const button = getLogoutControl(event.target);
+    if (!button) return;
+
     event.preventDefault();
     event.stopPropagation();
     if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    button.disabled = true;
 
-    const target = event.target.closest('button, a, [role="button"], input[type="button"], input[type="submit"]');
-    if (target) target.disabled = true;
-
-    // Fire-and-forget: navigation must never wait for the API response.
-    try {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/auth/logout', new Blob([], { type: 'application/json' }));
-      } else {
-        fetch('/api/auth/logout', {
-          method: 'POST', credentials: 'include', cache: 'no-store', keepalive: true
-        }).catch(function () {});
-      }
-    } catch (_) {}
-
-    window.location.replace('/login.html?logout=1');
+    // Do not use fetch() or sendBeacon(). Browser navigation waits for the
+    // server response, receives Set-Cookie, then follows the 303 to login.
+    window.location.replace('/api/auth/logout');
   }
 
-  // Capture phase runs before application bubble handlers.
-  document.addEventListener('click', logoutNow, true);
-  document.addEventListener('pointerup', logoutNow, true);
+  document.addEventListener('click', handleLogout, true);
 })();
 </script>
 `;
 
-  // Always replace any previous generated hotfix so deployment gets exactly
-  // one known logout handler. This is intentionally idempotent.
+try {
+  let source = fs.readFileSync(indexPath, 'utf8');
   source = source.replace(/<script[^>]*id=["']csp-logout-hotfix["'][^>]*>[\s\S]*?<\/script>\s*/i, '');
   source = source.replace('</body>', logoutScript + '\n</body>');
-
   fs.writeFileSync(indexPath, source, 'utf8');
-  console.log('[AUTH FIX] auth gate removed and logout replaced with immediate beacon redirect', {
-    beforeLength,
-    afterLength: source.length
-  });
+  console.log('[AUTH FIX] deterministic logout handler installed');
 } catch (error) {
-  console.error('[AUTH FIX] failed:', error?.message || error);
+  console.error('[AUTH FIX] logout handler install failed:', error?.message || error);
 }
