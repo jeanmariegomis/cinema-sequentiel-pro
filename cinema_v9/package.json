@@ -1,10 +1,10 @@
 {
   "name": "cinema-sequentiel-pro-v13",
-  "version": "13.1.1",
+  "version": "13.1.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node bootstrap.mjs"
+    "start": "node auth_clean.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
