@@ -7,30 +7,25 @@ try {
   let source = fs.readFileSync(indexPath, 'utf8');
   const beforeLength = source.length;
 
-  // The server already protects / with the csp_auth cookie.
-  // Remove the old client-side auth gate so an authenticated user cannot be
-  // trapped on "Vérification de la session".
+  // The server is the only authentication authority. Remove every old
+  // client-side auth gate that can trap an authenticated user.
   source = source
     .replace(/<script[^>]*id=["']auth-guard-script["'][^>]*>[\s\S]*?<\/script>\s*/i, '')
     .replace(/<script[^>]*id=["']csp-auth-status-bypass["'][^>]*>[\s\S]*?<\/script>\s*/i, '')
     .replace(/<script[^>]*id=["']csp-auth-gate-runtime-script["'][^>]*>[\s\S]*?<\/script>\s*/i, '')
     .replace(/<style[^>]*id=["']csp-auth-gate-runtime-fix["'][^>]*>[\s\S]*?<\/style>\s*/i, '')
-    .replace(/<body([^>]*)\sclass=["']([^"']*)auth-checking([^"']*)["']/i, '<body$1 class="$2$3"');
+    .replace(/<body([^>]*)\sclass=["']([^"']*)auth-checking([^"']*)["']/i, '<body$1 class="$2$3"')
+    // Remove the original async logout handler. It awaited fetch() and could
+    // leave the mobile browser apparently frozen when the API is slow.
+    .replace(/<script[^>]*id=["']logout-script["'][^>]*>[\s\S]*?<\/script>\s*/i, '');
 
+  // Remove static session overlays left by older versions.
   source = source.replace(
     /<[^>]+(?:id|class)=["'][^"']*(?:auth-loading|session-loading|auth-checking|session-checking)[^"']*["'][^>]*>[\s\S]*?<\/[^>]+>/gi,
     ''
   );
 
-  fs.writeFileSync(indexPath, source, 'utf8');
-  console.log('[AUTH FIX] client auth guard removed', { beforeLength, afterLength: source.length });
-} catch (error) {
-  console.error('[AUTH FIX] failed:', error?.message || error);
-}
-
-// Mobile-safe logout. Do NOT depend on a guessed element id: the handler
-// recognizes the actual logout control by common selectors and visible text.
-const logoutScript = `
+  const logoutScript = `
 <script id="csp-logout-hotfix">
 (function () {
   if (window.__cspLogoutHotfixInstalled) return;
@@ -74,18 +69,23 @@ const logoutScript = `
     window.location.replace('/login.html?logout=1');
   }
 
+  // Capture phase runs before application bubble handlers.
   document.addEventListener('click', logoutNow, true);
   document.addEventListener('pointerup', logoutNow, true);
 })();
 </script>
 `;
 
-try {
-  const current = fs.readFileSync(indexPath, 'utf8');
-  if (!current.includes('id="csp-logout-hotfix"')) {
-    fs.writeFileSync(indexPath, current.replace('</body>', logoutScript + '\n</body>'), 'utf8');
-    console.log('[AUTH FIX] intelligent mobile logout hotfix installed');
-  }
+  // Always replace any previous generated hotfix so deployment gets exactly
+  // one known logout handler. This is intentionally idempotent.
+  source = source.replace(/<script[^>]*id=["']csp-logout-hotfix["'][^>]*>[\s\S]*?<\/script>\s*/i, '');
+  source = source.replace('</body>', logoutScript + '\n</body>');
+
+  fs.writeFileSync(indexPath, source, 'utf8');
+  console.log('[AUTH FIX] auth gate removed and logout replaced with immediate beacon redirect', {
+    beforeLength,
+    afterLength: source.length
+  });
 } catch (error) {
-  console.error('[AUTH FIX] logout hotfix failed:', error?.message || error);
+  console.error('[AUTH FIX] failed:', error?.message || error);
 }
