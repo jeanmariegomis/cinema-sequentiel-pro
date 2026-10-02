@@ -65,6 +65,31 @@ app.get(
     out = out.replace(responseNeedle, `    res.setHeader('X-Job-Id', id);\n    res.setHeader('Cache-Control', 'no-store');\n\n${responseNeedle}`);
   }
 
+  // __CSP_AGNES_V2_TEST_MODE__
+  // Force the video path to use the legacy Agnes Video V2.0 API schema.
+  if (!out.includes('// __CSP_AGNES_V2_TEST_MODE__')) {
+    const modelPatch = `// __CSP_AGNES_V2_TEST_MODE__\n\nconst __CSP_V2_MODEL__ = 'agnes-video-v2.0';\n\n`;
+    const modelNeedle = "const MODEL =\n  'agnes-video-2.5-flash';\n\nconst LEGACY_MODEL =\n  'agnes-video-2.5-flash';";
+    if (!out.includes(modelNeedle)) throw new Error('Configuration Agnes Video 2.5 introuvable pour activation V2.0');
+    out = out.replace(
+      modelNeedle,
+      `${modelPatch}const MODEL =\n  __CSP_V2_MODEL__;\n\nconst LEGACY_MODEL =\n  __CSP_V2_MODEL__;`
+    );
+
+    const bodyNeedle = `  // ==========================================================\n  // POST HELPER\n  // ==========================================================`;
+    if (!out.includes(bodyNeedle)) throw new Error('Bloc POST helper introuvable pour activation V2.0');
+
+    const v2BodyPatch = `  // __CSP_AGNES_V2_BODY__\n  // V2.0 accepts prompt + image + num_frames + frame_rate.\n  // The old 2.5-only fields are removed before the request is sent.\n  primaryBody.model = MODEL;\n  primaryBody.num_frames = getValidLegacyFrames(requestedFrames);\n  primaryBody.frame_rate = FRAME_RATE;\n  delete primaryBody.mode;\n  delete primaryBody.seconds;\n  delete primaryBody.size;\n  delete primaryBody.aspect_ratio;\n  delete primaryBody.n;\n  delete primaryBody.first_frame;\n  delete primaryBody.last_frame;\n  delete primaryBody.images;\n\n  if (firstFrame) {\n    primaryBody.image = firstFrame;\n  } else if (images.length) {\n    primaryBody.image = images[0];\n  }\n\n`;
+    out = out.replace(bodyNeedle, v2BodyPatch + bodyNeedle);
+
+    out = out.replace(
+      "const rateLimitRetryDelays = [\n  120000\n];",
+      "const rateLimitRetryDelays = [];"
+    );
+
+    console.log('[BOOTSTRAP] Agnes Video V2.0 test mode enabled');
+  }
+
   return out;
 }, 'server.js');
 
