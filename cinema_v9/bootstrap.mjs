@@ -4,7 +4,8 @@ import path from 'path';
 const root = process.cwd();
 const serverPath = path.join(root, 'server.js');
 const indexPath = path.join(root, 'public', 'index.html');
-const enableV2Compat = process.env.CSP_ENABLE_V2_COMPAT === 'true';
+// V2.0 is now native in server.js; disable the obsolete runtime compatibility patches.
+const enableV2Compat = false;
 
 function patchFile(filePath, transform, label) {
   const original = fs.readFileSync(filePath, 'utf8');
