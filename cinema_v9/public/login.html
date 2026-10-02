@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
-<meta name="Pragma" content="no-cache">
-<meta name="Expires" content="0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Connexion — Cinéma Séquentiel Pro</title>
 <style>
@@ -31,13 +31,34 @@
  function log(m,t='info'){const d=document.createElement('div');d.className='log '+t;d.textContent='['+new Date().toLocaleTimeString()+'] '+m;box.appendChild(d);box.scrollTop=box.scrollHeight;console.log('[AUTH]',m)}
  log('Page de connexion chargée');
  const params=new URLSearchParams(location.search); if(params.get('error')==='INVALID_PASSWORD') error.textContent='Mot de passe incorrect.'; if(params.get('error')==='AUTH_NOT_CONFIGURED') error.textContent='Authentification non configurée sur Render.';
- form.addEventListener('submit',e=>{
+ form.addEventListener('submit',async e=>{
    e.preventDefault(); error.textContent=''; button.disabled=true; button.textContent='Connexion...'; log('Envoi de la connexion au serveur...','info');
-   // Native form submission is intentionally used here: the browser processes Set-Cookie
-   // and the server performs the authenticated 303 redirect to /. This avoids a second
-   // client-side status request racing the cookie update on mobile browsers.
-   const nativeForm=document.createElement('form'); nativeForm.method='POST'; nativeForm.action='/api/auth/login'; nativeForm.style.display='none';
-   const p=document.createElement('input'); p.type='password'; p.name='password'; p.value=input.value; nativeForm.appendChild(p); document.body.appendChild(nativeForm); nativeForm.submit();
+   try{
+     const body=new URLSearchParams(); body.set('password',input.value);
+     const response=await fetch('/api/auth/login',{method:'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+     log('Réponse connexion : HTTP '+response.status,response.ok?'ok':'warn');
+     if(response.redirected){
+       log('Session reçue — ouverture de l’application...','ok');
+       location.replace('/?_session_refresh='+Date.now());
+       return;
+     }
+     const data=await response.json().catch(()=>({}));
+     if(response.ok && data.ok){
+       log('Session reçue — ouverture de l’application...','ok');
+       location.replace('/?_session_refresh='+Date.now());
+       return;
+     }
+     const code=data.error||('HTTP_'+response.status);
+     if(code==='INVALID_PASSWORD') error.textContent='Mot de passe incorrect.';
+     else if(code==='AUTH_NOT_CONFIGURED') error.textContent='Authentification non configurée sur Render.';
+     else error.textContent='Connexion impossible ('+code+').';
+     log('Échec : '+code,'err');
+     button.disabled=false; button.textContent='🔓 Se connecter';
+   }catch(err){
+     error.textContent='Erreur réseau : '+err.message;
+     log('Erreur réseau : '+err.message,'err');
+     button.disabled=false; button.textContent='🔓 Se connecter';
+   }
  });
 })();
 </script>
