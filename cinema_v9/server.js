@@ -388,11 +388,12 @@ function getApiKeyForRequest(req) {
 // VIDEO CONFIG
 // ============================================================
 
+// Agnes Video V2.0 protocol.
 const MODEL =
-  'agnes-video-2.5-flash';
+  'agnes-video-v2.0';
 
 const LEGACY_MODEL =
-  'agnes-video-2.5-flash';
+  'agnes-video-v2.0';
 
 const FRAME_RATE = 24;
 
@@ -924,8 +925,47 @@ async function createVideoTask(
   }
 
   // ==========================================================
-  // PRIMARY BODY
+  // PRIMARY BODY — AGNES VIDEO V2.0
   // ==========================================================
+  //
+  // V2.0 uses num_frames + frame_rate for duration.
+  // num_frames must be <= 441 and satisfy 8n + 1.
+  //
+
+  const validFrames =
+    getValidLegacyFrames(
+      requestedFrames
+    );
+
+  function getVideoDimensions(aspectRatio) {
+    const ratio =
+      String(aspectRatio || '9:16').trim();
+
+    if (ratio === '16:9') {
+      return {
+        width: 1280,
+        height: 720
+      };
+    }
+
+    if (ratio === '1:1') {
+      return {
+        width: 1024,
+        height: 1024
+      };
+    }
+
+    // Portrait default for TikTok / Shorts.
+    return {
+      width: 720,
+      height: 1280
+    };
+  }
+
+  const dimensions =
+    getVideoDimensions(
+      scene.aspect_ratio
+    );
 
   const primaryBody = {
 
@@ -935,65 +975,62 @@ async function createVideoTask(
     prompt:
       prompt,
 
-    mode:
-      mode,
+    width:
+      dimensions.width,
 
-    seconds:
-      String(seconds),
+    height:
+      dimensions.height,
 
-    size:
-      scene.size ||
-      '720P',
+    num_frames:
+      validFrames,
 
-    aspect_ratio:
-      scene.aspect_ratio ||
-      '9:16',
+    frame_rate:
+      FRAME_RATE,
 
-    n:
-      1
+    negative_prompt:
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, CGI look, plastic skin, doll face'
   };
 
-  if (
-    mode === 'keyframe'
-  ) {
+  if (mode === 'keyframe') {
+    const keyframeImages = [
+      firstFrame,
+      lastFrame
+    ].filter(Boolean);
 
-    if (firstFrame) {
-      primaryBody.first_frame =
-        firstFrame;
-    }
-
-    if (lastFrame) {
-      primaryBody.last_frame =
-        lastFrame;
-    }
-
-    if (
-      !primaryBody.first_frame &&
-      !primaryBody.last_frame
-    ) {
-
+    if (keyframeImages.length >= 2) {
+      primaryBody.extra_body = {
+        image:
+          keyframeImages,
+        mode:
+          'keyframes'
+      };
+    } else if (keyframeImages.length === 1) {
+      primaryBody.image =
+        keyframeImages[0];
+    } else if (images.length) {
+      primaryBody.image =
+        images[0];
+    } else {
       throw new Error(
         'Mode keyframe sélectionné sans image de départ ou de fin'
       );
     }
   }
 
-  if (
-    mode === 'reference'
-  ) {
-
+  if (mode === 'reference') {
     if (!images.length) {
-
       throw new Error(
         'Mode reference sélectionné sans image de référence'
       );
     }
 
-    primaryBody.images =
-      images;
+    // V2.0 image-to-video uses a direct reference image.
+    primaryBody.image =
+      images[0];
   }
 
-  // ==========================================================
+
+    // ==========================================================
   // POST HELPER
   // ==========================================================
 
@@ -1011,35 +1048,30 @@ async function createVideoTask(
           body.model,
 
         mode:
-          body.mode ||
-          'legacy',
+          body.extra_body?.mode ||
+          (body.image ? 'img2video' : 'text2video'),
 
-        seconds:
-          body.seconds ||
-          null,
+        duration_seconds:
+          body.num_frames && body.frame_rate
+            ? (body.num_frames / body.frame_rate).toFixed(3)
+            : null,
 
         num_frames:
           body.num_frames ||
           null,
 
-        size:
-          body.size ||
+        width:
+          body.width ||
           null,
 
-        aspect_ratio:
-          body.aspect_ratio ||
+        height:
+          body.height ||
           null,
 
         imageCount:
-          Array.isArray(
-            body.images
-          )
-            ? body.images.length
-            : (
-                body.image
-                  ? 1
-                  : 0
-              )
+          Array.isArray(body.extra_body?.image)
+            ? body.extra_body.image.length
+            : (body.image ? 1 : 0)
       })
     );
 
@@ -1279,116 +1311,9 @@ throw new Error(
     );
   }
 
-  // ==========================================================
-  // LEGACY FALLBACK
-  // ==========================================================
-  //
-  // Only for compatibility/schema/model errors.
-  // ==========================================================
-
-  const status =
-    extractHttpStatus(
-      primaryMessage
-    );
-
-  const canFallback =
-    [
-      400,
-      404,
-      405,
-      415,
-      422,
-      500,
-      501,
-      502
-    ].includes(status) ||
-    /model|schema|parameter|seconds|duration|frames|invalid/i
-      .test(
-        primaryMessage
-      );
-
-  if (!canFallback) {
-
-    throw primaryError;
-  }
-
-  const validFrames =
-    getValidLegacyFrames(
-      requestedFrames
-    );
-
-  const legacyBody = {
-
-    model:
-      LEGACY_MODEL,
-
-    prompt:
-      prompt,
-
-    num_frames:
-      validFrames,
-
-    frame_rate:
-      FRAME_RATE
-  };
-
-  // Legacy API accepts one image.
-  if (firstFrame) {
-
-    legacyBody.image =
-      firstFrame;
-
-  } else if (images.length) {
-
-    legacyBody.image =
-      images[0];
-  }
-
-  console.warn(
-    '[VIDEO FALLBACK] primary rejected:',
-    primaryMessage
-  );
-
-  console.log(
-    '[VIDEO FALLBACK] requestedFrames=',
-    requestedFrames,
-    'validFrames=',
-    validFrames
-  );
-
-  try {
-
-    return await postVideo(
-      legacyBody,
-      'legacy-v2.0-fallback'
-    );
-
-  } catch (fallbackError) {
-
-    const fallbackMessage =
-      String(
-        fallbackError?.message ||
-        fallbackError
-      );
-
-    if (
-      isRateLimitError(
-        fallbackMessage
-      ) ||
-      extractHttpStatus(
-        fallbackMessage
-      ) === 429
-    ) {
-
-      throw new Error(
-        `Limite API gratuite atteinte, veuillez réessayer plus tard.`
-      );
-    }
-
-    throw new Error(
-      `Création vidéo échouée. Primaire: ${primaryMessage.slice(0, 700)} | Fallback: ${fallbackMessage.slice(0, 700)}`
-    );
-  }
+  // V2.0 is the single supported creation protocol.
+  // Never submit a second POST after a failed V2.0 creation.
+  throw primaryError;
 }
 
 // ============================================================
