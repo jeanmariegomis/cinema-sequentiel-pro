@@ -1882,6 +1882,7 @@ async function extractLastFrameAsDataUrl(videoUrl, jobId, sceneNumber) {
           '-y',
           '-sseof', '-0.01',
           '-i', inputPath,
+          '-pix_fmt', 'yuvj420p',
           '-frames:v', '1',
           '-q:v', '2',
           outputPath
