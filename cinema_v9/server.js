@@ -1228,10 +1228,12 @@ async function createVideoTask(
     ? Number(scene.sequenceIndex)
     : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
 
+  const visualBible = String(scene.visualBible || '').trim();
+
   const continuityPrompt =
     sequenceIndex > 0
-      ? buildContinuationPrompt(prompt)
-      : buildConsistencyPrompt(prompt);
+      ? buildContinuationPrompt(prompt, visualBible)
+      : buildConsistencyPrompt(prompt, visualBible);
 
   const primaryBody = {
 
@@ -1257,8 +1259,7 @@ async function createVideoTask(
       : {}),
 
     negative_prompt:
-      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'
-  };
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra person, duplicate animal, extra animal, second cat, cloned cat, unrequested talking animal, animal lip-sync without scripted dialogue, unrequested human voice, unrequested narration, unrequested speech, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, hair length change, hairline change, curl pattern change, hair silhouette change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'  };
 
   if (mode === 'keyframe') {
     const keyframeImages = [
@@ -2044,6 +2045,7 @@ async function processJob(job) {
               ...scene,
               sequenceIndex: 0,
               mode: 'reference',
+              visualBible: job.visualBible || '',
               images: scene.images?.length
                 ? scene.images
                 : (job.referenceImage ? [job.referenceImage] : [])
@@ -2067,6 +2069,7 @@ async function processJob(job) {
               ...scene,
               sequenceIndex: sceneIndex,
               mode: 'reference',
+              visualBible: job.visualBible || '',
               images: [continuityImage],
               first_frame: null,
               last_frame: null
@@ -2286,7 +2289,7 @@ app.post(
       });
     }
 
-    const { scenes, referenceImage } = req.body || {};
+    const { scenes, referenceImage, visualBible } = req.body || {};
 
     if (
       !Array.isArray(scenes) ||
@@ -2345,6 +2348,12 @@ app.post(
         null,
 
       referenceImage: sharedReference,
+
+      // Permanent project-level identity/environment anchor reused by every scene.
+      visualBible:
+        typeof visualBible === 'string'
+          ? visualBible.trim().slice(0, 12000)
+          : '',
 
       scenes:
         scenes.map(
