@@ -3,12 +3,13 @@
 // It does not touch authentication, job polling, downloads, progress, or continuity state.
 
 const ORIGINAL_FETCH = globalThis.fetch;
-const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE GUARD V7]';
+const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE/PERFORMANCE GUARD V8]';
 
 function buildGuard(prompt) {
   const text = String(prompt || '');
   const lower = text.toLowerCase();
   const isFirstScene = /\bscene\s*1\s+of\s+\d+\b/i.test(text);
+  const isContinuation = /\bscene\s*[2-9]\d*\s+of\s+\d+\b/i.test(text) || /continuation|previous scene|last frame/i.test(lower);
   const rules = [
     GUARD_MARKER,
     'CHARACTER COUNT LOCK: preserve exactly the characters explicitly described by the scene prompt and supplied reference image. Do not create, duplicate, clone, mirror, split, merge, replace, or transform any character.',
@@ -16,7 +17,13 @@ function buildGuard(prompt) {
     'HAIR IDENTITY LOCK: hair is a fixed identity feature. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline or recolor the hair unless explicitly requested.',
     'PERMANENT SUBJECT LOCK: once a person or animal is established by the reference image and visual bible, keep that same subject present and coherent unless the scene explicitly instructs an exit, departure or intentional removal.',
     'PERSONALITY LOCK: preserve the established temperament, emotional baseline, social attitude, gaze behavior, energy level, posture, gesture style and natural mannerisms. Do not invent a smile, flirtatious attitude, excitement, surprise, anger, theatrical reaction, or personality change unless the scene explicitly causes it.',
-    'EMOTIONAL CONTINUITY LOCK: expressions and emotional states must evolve gradually and have a visible narrative cause. Do not reset the character into a different emotional state merely to make the shot visually attractive.',
+    'PERFORMANCE STATE LOCK: treat the character performance at the end of the previous scene as persistent state, not as a suggestion. Preserve facial-expression intensity, mouth state, eyebrow position, gaze direction, head angle, shoulder posture, hand position, gesture amplitude, movement speed, breathing/energy impression and emotional intensity when visually inferable.',
+    'PERFORMANCE TRANSITION LOCK: between adjacent scenes, do not reset the character into a new personality, mood, smile level, gaze style, posture, energy or gesture style. The first moments of the next scene must inherit the previous ending performance before any new scripted action changes it.',
+    'EMOTION CAUSALITY LOCK: an emotional change must have an explicit narrative cause in the authoritative scene prompt and must develop progressively through visible performance. Never add emotion merely to make the shot more expressive or cinematic.',
+    'EXPRESSION MAGNITUDE LOCK: preserve the approximate strength of the established expression. A neutral/concentrated expression cannot become a broad smile, flirtatious look, exaggerated surprise or theatrical reaction without an explicit cause.',
+    'GAZE LOCK: preserve the established eye direction and attention target when continuing a scene. Do not invent a new gaze target, wink, eyebrow raise, head tilt or direct-to-camera look unless explicitly requested.',
+    'GESTURE STYLE LOCK: preserve the established natural movement style. Do not suddenly make gestures faster, broader, more playful, more seductive, more theatrical or more energetic than the previous scene without an explicit cause.',
+    'CLOTHING STATE LOCK: preserve the exact established outfit, layering, colors, patterns, sleeves, straps, apron and accessories. Do not reinterpret wardrobe between scenes.',
     'OBJECT IDENTITY LOCK: every important prop must remain the same physical object across adjacent moments. Preserve its shape, color, material, markings, size, orientation and relationship to the subject. Do not make a bowl, cup, spoon, jug, pan or other prop disappear, reappear, duplicate or become a different object.',
     'OBJECT STATE LOCK: preserve the current state of every important prop and substance. Keep fill level, contents, color, texture and consistency stable unless the AUTHORITATIVE SCENE PROMPT explicitly describes and visibly causes a change.',
     'MATERIAL STATE LOCK: do not transform milk, water, juice, oil, batter, dough, sauce, powder, food or other substances into another material simply because the next action is plausible. No spontaneous liquid-to-paste, liquid-to-dough, dough-to-liquid or color/texture change.',
@@ -33,6 +40,16 @@ function buildGuard(prompt) {
     'AUDIO SPEECH CONTINUITY: preserve the established character voice identity across scenes when dialogue is scripted. Do not introduce unrelated voices, narration, singing, or vocal improvisation.',
     'SCENE AUDIO LOCK: no unrequested narrator, singing, human voice, animal voice, or sound effect that creates a new story event. Natural room, cooking, movement and animal sounds may remain when they are visibly/physically justified.'
   ];
+
+  if (isContinuation) {
+    rules.push(
+      'CONTINUATION PERFORMANCE ANCHOR — ABSOLUTE: the previous scene final frame is the authoritative starting performance state. Reproduce the same person, same face, same hair, same wardrobe, same expression intensity, same gaze, same head angle, same posture, same hand/arm positions, same energy and same attention target before continuing the new action.',
+      'CONTINUATION FIRST-MOMENTS HOLD: do not introduce a new smile, facial expression, head tilt, gaze target, posture, gesture style or emotional intensity during the opening moment of the continuation. First inherit; then act.',
+      'CONTINUATION STATE CAUSALITY: if the new scene requires a different emotion or behavior, transition from the inherited state visibly and progressively. Never jump directly from the previous emotional state to the new one.',
+      'CONTINUATION OBJECT + PERFORMANCE COUPLING: preserve the physical relationship between the character and persistent props. Hands, arms, bowl, utensil, liquid/preparation and body position must begin in the same relationship established by the previous final frame.',
+      'CONTINUATION NO PERSONALITY RESET: do not make the character suddenly more cheerful, seductive, dramatic, surprised, energetic, serious or playful simply because a new scene begins.'
+    );
+  }
 
   if (isFirstScene) {
     rules.push(
@@ -74,7 +91,7 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
         if (originalPrompt && !originalPrompt.includes(GUARD_MARKER)) {
           body.prompt = `${buildGuard(originalPrompt)}\n\nSCENE PROMPT (AUTHORITATIVE):\n${originalPrompt}`;
           const nextInit = { ...init, headers, body: JSON.stringify(body) };
-          console.log('[PROMPT GUARD] Camera/personality/audio/state constraints injected for Agnes scene.');
+          console.log('[PROMPT GUARD] Performance/state/camera/audio constraints injected for Agnes scene.');
           return ORIGINAL_FETCH.call(this, input, nextInit);
         }
       }
@@ -85,4 +102,4 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
   return ORIGINAL_FETCH.call(this, input, init);
 };
 
-console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state guard V7 loaded.');
+console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state/performance guard V8 loaded.');
