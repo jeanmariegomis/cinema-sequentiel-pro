@@ -597,8 +597,7 @@ function loadJobs() {
         Array.isArray(job.scenes) &&
         job.scenes.some(scene => scene.mode === 'reference' || scene.mode === 'keyframe')
       ) {
-        job.status = 'failed';        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';
-        for (const scene of job.scenes) {
+        job.status = 'failed';        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';        for (const scene of job.scenes) {
           if (scene.status !== 'done') {
             scene.status = 'failed';
             scene.error = 'Job interrompu après redémarrage du serveur.';
@@ -888,9 +887,9 @@ function isQueueFullError(
 
 function normalizeSeedPrompt(value) {
   return String(value || '')
-    .replace(/\\r\\n/g, '\\n')
-    .replace(/[\\t ]+/g, ' ')
-    .replace(/\\n{3,}/g, '\\n\\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -1198,7 +1197,6 @@ async function createVideoTask(
 
     frame_rate:
       FRAME_RATE,
-
     ...(deterministicSeed !== null
       ? { seed: deterministicSeed }
       : {}),
@@ -1797,8 +1795,7 @@ return videoUrl;
       getAdaptivePollDelay(
         data.progress != null
           ? Number(data.progress)
-          : null
-      )
+          : null      )
     );
   }
 
