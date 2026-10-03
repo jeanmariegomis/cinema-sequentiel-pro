@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node continuity.mjs"
+    "start": "node auth_overlay_patch.mjs && node continuity.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
