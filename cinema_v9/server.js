@@ -2495,7 +2495,7 @@ async function processJob(job) {
               generatedUrl,
               job.id,
               sceneNumber,
-              true
+              sceneIndex < job.scenes.length - 1
             );
 
           if (sceneIndex > 0) {
