@@ -1,0 +1,70 @@
+name: One-time Agnes performance patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/agnes-perf-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch current server.js
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('cinema_v9/server.js')
+          text = path.read_text(encoding='utf-8')
+
+          old = """  const basePollDelay =
+    2000;"""
+          new = """  const basePollDelay =
+    2000;
+
+  const nearCompletionPollDelay =
+    1000;"""
+
+          if 'const nearCompletionPollDelay' not in text:
+              if old not in text:
+                  raise SystemExit('Current server.js polling marker not found')
+              text = text.replace(old, new, 1)
+
+          old2 = """  function getAdaptivePollDelay(progress) {
+    if (progress == null) {
+      return basePollDelay;
+    }"""
+          new2 = """  function getAdaptivePollDelay(progress) {
+    if (progress == null) {
+      return basePollDelay;
+    }
+
+    if (Number(progress) >= 90) {
+      return nearCompletionPollDelay;
+    }"""
+
+          if 'return nearCompletionPollDelay;' not in text:
+              if old2 not in text:
+                  raise SystemExit('Current server.js adaptive polling marker not found')
+              text = text.replace(old2, new2, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Verify and commit
+        run: |
+          grep -n "nearCompletionPollDelay" cinema_v9/server.js
+          grep -n "agnes-video-v2.0" cinema_v9/server.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cinema_v9/server.js .github/workflows/agnes-perf-patch.yml
+          git rm .github/workflows/repair-v94.yml || true
+          git rm .github/workflows/agnes-perf-patch.yml
+          git commit -m "perf: reduce Agnes completion polling latency"
+          git push
