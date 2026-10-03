@@ -983,12 +983,33 @@ function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFra
   };
 }
 
+function buildActionIntegrityPrompt(prompt) {
+  const text = String(prompt || '').trim();
+  const lower = text.toLowerCase();
+  const rules = [
+    'ACTION INTEGRITY LOCK: execute the exact action described in the scene prompt and nothing else. Identify the acting subject, the manipulated object, the intended target, the contact point, and the direction of movement before animating. The hands, tools, objects, liquid, and body must remain physically connected to the intended action.',
+    'The action must have a clear cause-and-effect sequence: the subject visibly holds or contacts the correct object, moves it toward the exact target named in the prompt, performs the requested action on that target, and keeps the movement aligned with that target for the entire action. Never redirect the action toward the table, floor, empty space, another object, or another person unless explicitly requested.',
+    'OBJECT AND TARGET LOCK: preserve the identity, position, size, orientation, and physical relationship of important props. Do not swap objects, duplicate objects, move an object to an unintended location, or invent a different target. Maintain believable contact, gravity, collision, trajectory, and hand placement.',
+    'If the prompt describes pouring, the container must remain directly above the named receiving container or target, the liquid stream must stay continuously inside that target, and the liquid must never spill onto the table, countertop, floor, clothing, or surrounding area unless the prompt explicitly requests a spill.',
+    'If the prompt describes mixing, stirring, whisking, cutting, opening, closing, taking, placing, giving, receiving, picking up, putting down, or looking at something, the subject must visibly interact with the exact named object or target and complete the described action. Do not substitute another object or target.',
+    'Do not introduce an unintended action merely because it is visually plausible. The written scene instruction has priority over generic animation habits.'
+  ];
+  if (/(vers|pour|lait|liquide|boisson|eau|jus)/i.test(lower)) {
+    rules.push('POURING SAFETY LOCK: if liquid is being poured, show the receiving bowl, cup, glass, pan, or other named container clearly under the pouring stream before the stream begins. Keep the stream centered over the receiving container until pouring ends. ZERO liquid on the table or countertop.');
+  }
+  if (/(m[ée]lange|remue|remuer|fouet|touille|touiller|stir|mix)/i.test(lower)) {
+    rules.push('MIXING LOCK: keep the utensil visibly inside the named bowl, pan, or container during mixing. The utensil must not drift onto the table or into empty space.');
+  }
+  return rules.join('\n');
+}
+
 function buildConsistencyPrompt(prompt) {
   return [
     'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot. Keep the same face, facial proportions, hairstyle, hairline, skin tone, age, body proportions, clothing, colors, accessories, and distinctive features from the reference image. Do not redesign, beautify, age, de-age, slim, enlarge muscles, or replace the character.',
     'Preserve the same environment, architecture, important objects, spatial layout, time of day, lighting direction, color palette, and visual style established by the reference and visual bible unless the prompt explicitly requests a change.',
     'REALISTIC CINEMATIC MOTION: natural human anatomy, realistic skin texture, physically plausible movement, believable weight and inertia, realistic hands and facial motion, natural eye focus and blinking, coherent shadows and reflections, photographic lighting, cinematic depth of field, subtle camera movement. Keep motion continuous from the first frame to the last frame; no sudden resets or scene changes.',
     'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
+    buildActionIntegrityPrompt(prompt),
     'SCENE INSTRUCTIONS:\n' + prompt
   ].join('\n\n');
 }
