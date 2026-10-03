@@ -1003,24 +1003,39 @@ function buildActionIntegrityPrompt(prompt) {
   return rules.join('\n');
 }
 
-function buildConsistencyPrompt(prompt) {
+function buildConsistencyPrompt(prompt, visualBible = '') {
+  const bible = String(visualBible || '').trim();
+  const lockedBible = bible
+    ? 'SERVER-LOCKED VISUAL BIBLE — SAME IDENTITY/ENVIRONMENT RULES FOR EVERY SCENE:\n' + bible
+    : 'SERVER-LOCKED VISUAL BIBLE: none supplied; rely on the supplied reference image and scene prompt.';
+
   return [
-    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot. Keep the same face, facial proportions, hairstyle, hairline, skin tone, age, body proportions, clothing, colors, accessories, and distinctive features from the reference image. Do not redesign, beautify, age, de-age, slim, enlarge muscles, or replace the character.',
-    'Preserve the same environment, architecture, important objects, spatial layout, time of day, lighting direction, color palette, and visual style established by the reference and visual bible unless the prompt explicitly requests a change.',
-    'REALISTIC CINEMATIC MOTION: natural human anatomy, realistic skin texture, physically plausible movement, believable weight and inertia, realistic hands and facial motion, natural eye focus and blinking, coherent shadows and reflections, photographic lighting, cinematic depth of field, subtle camera movement. Keep motion continuous from the first frame to the last frame; no sudden resets or scene changes.',
-    'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
+    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot and across the entire sequence.',
+    'FACIAL IDENTITY LOCK: preserve exact face shape, facial proportions, eye shape/color, eyebrows, eyelids, nose, lips, jawline, freckles, skin tone, age and distinctive facial features. Never redraw, beautify or replace the character with a different person.',
+    'HAIR IDENTITY LOCK: hairstyle is a fixed biometric identifier. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline, recolor the hair or alter the silhouette unless explicitly requested.',
+    'BODY AND CLOTHING LOCK: preserve exact body proportions, shoulder width, silhouette, age, clothing, colors, accessories and distinctive physical details. Never make the character suddenly muscular, extremely thin, younger, older or differently proportioned.',
+    'ENVIRONMENT LOCK: preserve exact architecture, important props, spatial layout, time of day, lighting direction, color palette and visual style established by the reference and visual bible unless explicitly changed.',
+    'ANIMAL LOCK: if an animal is present, preserve exact species, face, fur/feather pattern, colors, eyes, ears, size, body proportions and silhouette. Never clone, duplicate or replace it.',
+    'REALISTIC CINEMATIC MOTION: use natural anatomy, believable weight/inertia, realistic hands and facial motion, natural eye focus/blinking, coherent shadows/reflections, cinematic depth of field and restrained camera movement.',
+    'The supplied reference image defines existing identity and appearance. The scene prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a replacement.',
+    lockedBible,
+    'AUDIO PRESENCE LOCK: unless the scene explicitly requests silence/no sound, include an audible cinematic sound bed or instrumental score. Never leave a scene randomly silent.',
+    'AUDIO CONTINUITY LOCK: when multiple scenes belong to one sequence, preserve a coherent recurring sonic identity, related mood, instrumentation family, production character and stable perceived volume. No unrelated genre changes or random audio drops.',
+    'AUDIO SPEECH LOCK: only scripted dialogue may be spoken. No invented narration, singing, conversation, human voice, animal speech or lip-sync. A subject with no scripted dialogue remains silent.',
     buildActionIntegrityPrompt(prompt),
     'SCENE INSTRUCTIONS:\n' + prompt
   ].join('\n\n');
 }
 
-function buildContinuationPrompt(prompt) {
+function buildContinuationPrompt(prompt, visualBible = '') {
   return [
     'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot.',
-    'Do not restart the story from the master reference. Do not recreate a new opening pose. Do not change the camera position, framing, zoom, subject positions, hand positions, prop positions, lighting direction, or spatial relationships during the first moment. Preserve the exact composition first, then animate forward.',
-    'The supplied previous-scene frame is the temporal starting point. The visual bible and scene prompt describe what happens next. Never replace the supplied frame with a newly invented composition.',
-    buildConsistencyPrompt(prompt)
-  ].join('\\n\\n');
+    'FIRST 0.5 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props and lighting visually locked before introducing new motion.',
+    'DO NOT RESET OR RECOMPOSE: do not restart from the master reference image, do not redesign the character, do not move the character to a new location, and do not replace the supplied starting frame with a newly invented opening.',
+    'HAIR AND FACE MUST MATCH THE SUPPLIED FRAME: hair length, curl pattern, hairline, volume, color, face shape, eyes and all visible identity details must remain unchanged while the new action begins.',
+    'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible is the permanent identity/environment constraint.',
+    buildConsistencyPrompt(prompt, visualBible)
+  ].join('\n\n');
 }
 
 function getValidLegacyFrames(
