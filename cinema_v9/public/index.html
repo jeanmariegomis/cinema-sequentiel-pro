@@ -1515,6 +1515,11 @@ If the video model cannot guarantee the selected spoken language, GENERATE NO SP
 If a scene contains no dialogue, generate no speech, no words and no vocal improvisation.
 DIALOGUE IS AUDIO ONLY. NEVER render spoken words as subtitles, captions, text, speech bubbles or graphics.
 NO SPOKEN LANGUAGE OTHER THAN THE SELECTED LANGUAGE.
+
+AUDIO / MUSIC CONTINUITY DEFAULT:
+Unless this scene explicitly requests silence, ALWAYS generate an audible cinematic sound bed or instrumental music.
+Across the whole film, keep a coherent recurring sonic identity with related mood, instrumentation family, production character and stable perceived volume.
+No random silence, no abrupt genre changes, no invented narrator, no singing or vocals unless scripted, and no animal speech unless explicitly requested.
 `;
 }
 
@@ -1542,6 +1547,7 @@ async function startGeneration() {
     const secondsPerScene = Math.max(4, Math.min(MAX_VIDEO_SECONDS, Math.round(state.durationFrames / FRAME_RATE)));
     const payload = {
         referenceImage: state.initialRefDataUrl,
+        visualBible: state.bible,
         scenes: state.scenes.map((scene, i) => ({
             prompt: buildScenePrompt(scene.text, i, state.scenes.length, true),
             mode: 'reference',
