@@ -26,6 +26,18 @@ if (!out.includes('body:not(.auth-checking) #auth-loading{display:none!important
   out = out.replace(styleMarker, styleFix);
 }
 
+// Final defensive unlock: the screenshot state proves authentication succeeded
+// (the protected application and its logout control are already rendered), but
+// the visual auth overlay can remain stuck. In that state, unlock the page
+// without touching the authentication request, cookie, video pipeline, or job state.
+const unlockMarker = '/* __CSP_AUTH_OVERLAY_FORCE_UNLOCK_V2__ */';
+if (!out.includes(unlockMarker)) {
+  const unlockScript = `\n<script>\n${unlockMarker}\n(function(){\n  function forceUnlockIfAuthenticated(){\n    try {\n      const buttons = Array.from(document.querySelectorAll('button'));\n      const authenticatedUi = buttons.some(function(btn){\n        return /déconnecter|deconnecter/i.test((btn.textContent || '').trim());\n      });\n      if (!authenticatedUi) return false;\n      document.body.classList.remove('auth-checking');\n      const overlay = document.getElementById('auth-loading');\n      if (overlay) overlay.remove();\n      return true;\n    } catch (_) { return false; }\n  }\n  if (forceUnlockIfAuthenticated()) return;\n  const observer = new MutationObserver(function(){\n    if (forceUnlockIfAuthenticated()) observer.disconnect();\n  });\n  observer.observe(document.documentElement, {childList:true, subtree:true});\n  setTimeout(function(){\n    forceUnlockIfAuthenticated();\n    observer.disconnect();\n  }, 15000);\n})();\n</script>\n`;
+  const bodyClose = '</body>';
+  if (!out.includes(bodyClose)) throw new Error('AUTH_OVERLAY_PATCH: </body> target not found');
+  out = out.replace(bodyClose, unlockScript + bodyClose);
+}
+
 if (out !== source) {
   fs.writeFileSync(indexPath, out, 'utf8');
   console.log('[AUTH OVERLAY PATCH] applied');
