@@ -423,6 +423,16 @@ const JOBS_FILE =
 const MAX_VIDEO_SECONDS = 12;
 const AGNES_REQUEST_TIMEOUT_MS = 45000;
 const AGNES_POLL_TIMEOUT_MS = 30000;
+
+// Deep V2.0 continuity validation.
+// Agnes V2.0 exposes img2video through a single top-level image. Keep that
+// temporal reference, but verify frame 0 of every later scene against the
+// previous scene's final frame before accepting it. Rejected continuations
+// are regenerated internally; client progress semantics remain unchanged.
+const MAX_CONTINUITY_RETRIES = 2;
+const CONTINUITY_START_MAX_MAE = 0.14;
+const CONTINUITY_RETRY_SEED_SALT = 'CSP-V2-CONTINUITY-RETRY';
+
 // Agnes free queue: process one server job at a time by default.
 const MAX_CONCURRENT_JOBS = Math.max(
   1,
@@ -938,7 +948,46 @@ function fingerprintImage(value) {
     .digest('hex');
 }
 
-function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFrames) {
+
+function makeProjectSeed(referenceImage, visualBible) {
+  const material = JSON.stringify({
+    purpose: 'cinema-sequentiel-pro-v2-project-seed',
+    reference: fingerprintImage(referenceImage),
+    visualBible: normalizeSeedPrompt(visualBible || '')
+  });
+
+  const digest = crypto
+    .createHash('sha256')
+    .update(material, 'utf8')
+    .digest();
+
+  return digest.readUInt32BE(0);
+}
+
+function makeProjectAudioSignature(projectSeed, visualBible) {
+  const material = JSON.stringify({
+    purpose: 'cinema-sequentiel-pro-v2-audio-identity',
+    projectSeed: projectSeed ?? null,
+    visualBible: normalizeSeedPrompt(visualBible || '')
+  });
+
+  return crypto
+    .createHash('sha256')
+    .update(material, 'utf8')
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function makeDeterministicSeed(
+  scene,
+  prompt,
+  images,
+  mode,
+  dimensions,
+  validFrames,
+  projectSeed = null,
+  continuityRetry = 0
+) {
   if (!AGNES_DETERMINISTIC_SEED) {
     return null;
   }
@@ -948,11 +997,32 @@ function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFra
     return {
       seed: explicitSeed,
       promptHash: null,
-      imageHashes: []
+      imageHashes: [],
+      scope: 'explicit'
     };
   }
 
   const normalizedPrompt = normalizeSeedPrompt(prompt);
+
+  if (
+    Number.isSafeInteger(Number(projectSeed)) &&
+    Number(projectSeed) >= 0 &&
+    continuityRetry === 0
+  ) {
+    return {
+      seed: Number(projectSeed),
+      promptHash: crypto
+        .createHash('sha256')
+        .update(normalizedPrompt, 'utf8')
+        .digest('hex')
+        .slice(0, 16),
+      imageHashes: images
+        .map(fingerprintImage)
+        .filter(Boolean)
+        .map(hash => hash.slice(0, 16)),
+      scope: 'project'
+    };
+  }
   const imageFingerprints = images
     .map(fingerprintImage)
     .filter(Boolean);
@@ -964,7 +1034,16 @@ function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFra
     width: dimensions.width,
     height: dimensions.height,
     frames: validFrames,
-    frame_rate: FRAME_RATE
+    frame_rate: FRAME_RATE,
+    projectSeed:
+      Number.isSafeInteger(Number(projectSeed))
+        ? Number(projectSeed)
+        : null,
+    continuityRetry: Number(continuityRetry) || 0,
+    retrySalt:
+      continuityRetry > 0
+        ? CONTINUITY_RETRY_SEED_SALT
+        : ''
   });
 
   const seedDigest = crypto
@@ -979,8 +1058,23 @@ function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFra
       .update(normalizedPrompt, 'utf8')
       .digest('hex')
       .slice(0, 16),
-    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16))
+    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16)),
+    scope: continuityRetry > 0 ? 'continuity-retry' : 'scene'
   };
+}
+
+function buildProjectAudioContinuityPrompt(audioSignature = '') {
+  const signature = String(audioSignature || '').trim();
+
+  return [
+    'PROJECT AUDIO MASTER LOCK: all scenes in this job belong to one continuous film soundtrack identity.',
+    'Keep the SAME instrumental musical identity from scene to scene: same broad composition character, tempo family, harmonic language, instrumentation family, arrangement style, production texture and perceived loudness.',
+    'Do not replace the established soundtrack with a different song, unrelated genre, unrelated instrumentation, different tempo family, or a new musical mood unless the scene explicitly requests a deliberate music change.',
+    'Do not restart the music with an unrelated opening. Treat the project soundtrack as already established before this scene begins and preserve its musical fingerprint.',
+    signature
+      ? 'PROJECT AUDIO SIGNATURE: ' + signature
+      : 'PROJECT AUDIO SIGNATURE: stable-default'
+  ].join('\\n');
 }
 
 function buildActionIntegrityPrompt(prompt) {
@@ -1003,7 +1097,7 @@ function buildActionIntegrityPrompt(prompt) {
   return rules.join('\n');
 }
 
-function buildConsistencyPrompt(prompt, visualBible = '') {
+function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
   const bible = String(visualBible || '').trim();
   const lockedBible = bible
     ? 'SERVER-LOCKED VISUAL BIBLE — SAME IDENTITY/ENVIRONMENT RULES FOR EVERY SCENE:\n' + bible
@@ -1016,9 +1110,11 @@ function buildConsistencyPrompt(prompt, visualBible = '') {
     'BODY AND CLOTHING LOCK: preserve exact body proportions, shoulder width, silhouette, age, clothing, colors, accessories and distinctive physical details. Never make the character suddenly muscular, extremely thin, younger, older or differently proportioned.',
     'ENVIRONMENT LOCK: preserve exact architecture, important props, spatial layout, time of day, lighting direction, color palette and visual style established by the reference and visual bible unless explicitly changed.',
     'ANIMAL LOCK: if an animal is present, preserve exact species, face, fur/feather pattern, colors, eyes, ears, size, body proportions and silhouette. Never clone, duplicate or replace it.',
+    'PERMANENT CHARACTER PRESENCE LOCK: once a character or animal is established by the master reference/visual bible, keep it present and visually coherent unless the scene explicitly says it exits, leaves the frame, or is intentionally removed.',
     'REALISTIC CINEMATIC MOTION: use natural anatomy, believable weight/inertia, realistic hands and facial motion, natural eye focus/blinking, coherent shadows/reflections, cinematic depth of field and restrained camera movement.',
     'The supplied reference image defines existing identity and appearance. The scene prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a replacement.',
     lockedBible,
+    buildProjectAudioContinuityPrompt(audioSignature),
     'AUDIO PRESENCE LOCK: unless the scene explicitly requests silence/no sound, include an audible cinematic sound bed or instrumental score. Never leave a scene randomly silent.',
     'AUDIO CONTINUITY LOCK: when multiple scenes belong to one sequence, preserve a coherent recurring sonic identity, related mood, instrumentation family, production character and stable perceived volume. No unrelated genre changes or random audio drops.',
     'AUDIO SPEECH LOCK: only scripted dialogue may be spoken. No invented narration, singing, conversation, human voice, animal speech or lip-sync. A subject with no scripted dialogue remains silent.',
@@ -1027,14 +1123,16 @@ function buildConsistencyPrompt(prompt, visualBible = '') {
   ].join('\n\n');
 }
 
-function buildContinuationPrompt(prompt, visualBible = '') {
+function buildContinuationPrompt(prompt, visualBible = '', audioSignature = '') {
   return [
     'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot.',
     'FIRST 0.5 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props and lighting visually locked before introducing new motion.',
     'DO NOT RESET OR RECOMPOSE: do not restart from the master reference image, do not redesign the character, do not move the character to a new location, and do not replace the supplied starting frame with a newly invented opening.',
     'HAIR AND FACE MUST MATCH THE SUPPLIED FRAME: hair length, curl pattern, hairline, volume, color, face shape, eyes and all visible identity details must remain unchanged while the new action begins.',
     'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible is the permanent identity/environment constraint.',
-    buildConsistencyPrompt(prompt, visualBible)
+    'CONTINUITY COMPOSITION LOCK: during the first 0.5 seconds, do not zoom, crop, reframe, cut, rotate, mirror, or change the camera height/focal relationship. The first generated frame must remain visually close to the supplied previous final frame.',
+    'PERSISTENT SUBJECT LOCK: every established permanent character or animal visible in the previous final frame remains present unless the scene explicitly instructs an exit. Do not silently remove the cat, replace the woman, or invent a new subject.',
+    buildConsistencyPrompt(prompt, visualBible, audioSignature)
   ].join('\n\n');
 }
 
@@ -1231,7 +1329,11 @@ async function createVideoTask(
       images,
       mode,
       dimensions,
-      validFrames
+      validFrames,
+      Number.isSafeInteger(Number(scene.projectSeed))
+        ? Number(scene.projectSeed)
+        : null,
+      Number(scene.continuityRetry) || 0
     );
 
   const deterministicSeed =
@@ -1244,11 +1346,12 @@ async function createVideoTask(
     : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
 
   const visualBible = String(scene.visualBible || '').trim();
+  const audioSignature = String(scene.audioSignature || '').trim();
 
   const continuityPrompt =
     sequenceIndex > 0
-      ? buildContinuationPrompt(prompt, visualBible)
-      : buildConsistencyPrompt(prompt, visualBible);
+      ? buildContinuationPrompt(prompt, visualBible, audioSignature)
+      : buildConsistencyPrompt(prompt, visualBible, audioSignature);
 
   const primaryBody = {
 
@@ -1878,21 +1981,32 @@ return videoUrl;
 // __CSP_AUTO_CONTINUITY_V2__
 // Native scene-to-scene continuity. This logic is intentionally inside
 // server.js so deployment cannot silently skip a runtime source patch.
-async function extractLastFrameAsDataUrl(videoUrl, jobId, sceneNumber) {
+async function extractSceneBoundaryFrames(
+  videoUrl,
+  jobId,
+  sceneNumber,
+  includeLastFrame = true
+) {
   if (!videoUrl) {
     throw new Error('Continuité: URL vidéo absente pour la scène ' + sceneNumber);
   }
 
   const tempId = crypto.randomUUID();
   const inputPath = path.join(DATA_DIR, '__csp_video_' + tempId + '.mp4');
-  const outputPath = path.join(DATA_DIR, '__csp_frame_' + tempId + '.jpg');
+  const firstFramePath = path.join(DATA_DIR, '__csp_first_' + tempId + '.jpg');
+  const lastFramePath = path.join(DATA_DIR, '__csp_last_' + tempId + '.jpg');
   const persistentPath = path.join(
     CONTINUITY_FRAME_DIR,
     String(jobId) + '_scene_' + String(sceneNumber) + '.jpg'
   );
 
   try {
-    console.log('[CONTINUITY] Téléchargement scène ' + sceneNumber + ' pour capturer sa dernière image…');
+    console.log(
+      '[CONTINUITY] Téléchargement scène ' +
+      sceneNumber +
+      ' pour vérifier ses frames de frontière…'
+    );
+
     const response = await fetchWithTimeout(
       videoUrl,
       {},
@@ -1907,87 +2021,291 @@ async function extractLastFrameAsDataUrl(videoUrl, jobId, sceneNumber) {
     if (!buffer.length) {
       throw new Error('Vidéo terminée mais vide');
     }
+
     fs.writeFileSync(inputPath, buffer);
 
-    const { default: ffmpegInstaller } = await import('@ffmpeg-installer/ffmpeg');
+    const { default: ffmpegInstaller } =
+      await import('@ffmpeg-installer/ffmpeg');
     const { spawn } = await import('child_process');
 
-    async function runLastFrameExtraction(seekFromEnd) {
+    async function runExtraction(args, outputPath, label) {
       try { fs.unlinkSync(outputPath); } catch (_) {}
 
       await new Promise((resolve, reject) => {
         const child = spawn(
           ffmpegInstaller.path,
-          [
-            '-y',
-            '-sseof', String(seekFromEnd),
-            '-i', inputPath,
-            '-frames:v', '1',
-            '-q:v', '2',
-            '-f', 'image2',
-            outputPath
-          ],
+          ['-y', ...args, outputPath],
           { stdio: ['ignore', 'ignore', 'pipe'] }
         );
 
         let stderr = '';
+
         child.stderr.on('data', chunk => {
           stderr += chunk.toString();
         });
+
         child.on('error', reject);
+
         child.on('close', code => {
           if (code !== 0) {
-            reject(new Error('FFmpeg dernière frame failed (' + code + '): ' + stderr.slice(-1200)));
+            reject(
+              new Error(
+                'FFmpeg ' +
+                  label +
+                  ' failed (' +
+                  code +
+                  '): ' +
+                  stderr.slice(-1200)
+              )
+            );
             return;
           }
+
           if (!fs.existsSync(outputPath)) {
-            reject(new Error('FFmpeg terminé sans produire l’image finale (seek=' + seekFromEnd + ')'));
+            reject(
+              new Error(
+                'FFmpeg ' +
+                  label +
+                  ' terminé sans produire l’image.'
+              )
+            );
             return;
           }
+
           resolve();
         });
       });
     }
 
-    // Some MP4s have a timestamp/index layout for which a seek of only
-    // 10 ms before EOF exits successfully but produces no image. Retry
-    // farther from EOF so continuity never fails on a valid completed video.
-    try {
-      await runLastFrameExtraction('-1');
-    } catch (firstError) {
-      console.warn('[CONTINUITY] Première extraction finale échouée, nouvelle tentative plus large…', firstError.message);
-      await runLastFrameExtraction('-2');
-    }
-
-    const jpg = fs.readFileSync(outputPath);
-    if (!jpg.length) {
-      throw new Error('Image finale vide');
-    }
-
-    fs.writeFileSync(persistentPath, jpg);
-
-    const hash = crypto
-      .createHash('sha256')
-      .update(jpg)
-      .digest('hex');
-
-    console.log(
-      '[CONTINUITY] Scène ' + sceneNumber +
-      ' → dernière image capturée (' +
-      Math.round(jpg.length / 1024) +
-      ' KB, sha256=' + hash.slice(0, 16) + '…)'
+    await runExtraction(
+      [
+        '-i', inputPath,
+        '-frames:v', '1',
+        '-q:v', '2',
+        '-f', 'image2'
+      ],
+      firstFramePath,
+      'première frame'
     );
 
+    if (includeLastFrame) {
+      try {
+        await runExtraction(
+          [
+            '-sseof', '-1',
+            '-i', inputPath,
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-f', 'image2'
+          ],
+          lastFramePath,
+          'dernière frame'
+        );
+      } catch (firstError) {
+        console.warn(
+          '[CONTINUITY] Première extraction finale échouée, nouvelle tentative plus large…',
+          firstError.message
+        );
+
+        await runExtraction(
+          [
+            '-sseof', '-2',
+            '-i', inputPath,
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-f', 'image2'
+          ],
+          lastFramePath,
+          'dernière frame (fallback)'
+        );
+      }
+    }
+
+    const firstJpg = fs.readFileSync(firstFramePath);
+    const lastJpg = includeLastFrame
+      ? fs.readFileSync(lastFramePath)
+      : null;
+
+    if (!firstJpg.length) {
+      throw new Error('Première image vidéo vide');
+    }
+
+    if (includeLastFrame) {
+      if (!lastJpg?.length) {
+        throw new Error('Image finale vide');
+      }
+
+      fs.writeFileSync(persistentPath, lastJpg);
+    }
+
+    const firstHash = crypto
+      .createHash('sha256')
+      .update(firstJpg)
+      .digest('hex');
+
+    const lastHash = lastJpg
+      ? crypto.createHash('sha256').update(lastJpg).digest('hex')
+      : '';
+
+    console.log(
+      '[CONTINUITY] Scène ' +
+      sceneNumber +
+      ' → frame initiale capturée (' +
+      Math.round(firstJpg.length / 1024) +
+      ' KB, sha256=' +
+      firstHash.slice(0, 16) +
+      '…)'
+    );
+
+    if (includeLastFrame) {
+      console.log(
+        '[CONTINUITY] Scène ' +
+        sceneNumber +
+        ' → dernière image capturée (' +
+        Math.round(lastJpg.length / 1024) +
+        ' KB, sha256=' +
+        lastHash.slice(0, 16) +
+        '…)'
+      );
+    }
+
     return {
-      dataUrl: 'data:image/jpeg;base64,' + jpg.toString('base64'),
-      filePath: persistentPath,
-      hash
+      firstDataUrl:
+        'data:image/jpeg;base64,' +
+        firstJpg.toString('base64'),
+      firstHash,
+      lastDataUrl: lastJpg
+        ? 'data:image/jpeg;base64,' + lastJpg.toString('base64')
+        : null,
+      lastHash,
+      filePath: includeLastFrame ? persistentPath : null
     };
   } finally {
-    for (const file of [inputPath, outputPath]) {
+    for (const file of [
+      inputPath,
+      firstFramePath,
+      lastFramePath
+    ]) {
       try { fs.unlinkSync(file); } catch (_) {}
     }
   }
+}
+
+async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
+  const match = String(dataUrl || '').match(
+    /^data:[^;,]+(?:;[^,]*)?;base64,(.+)$/is
+  );
+
+  if (!match) {
+    throw new Error('Image de continuité invalide pour ' + label);
+  }
+
+  const inputPath = path.join(
+    DATA_DIR,
+    '__csp_compare_' + tempId + '_' + label + '.jpg'
+  );
+
+  try {
+    fs.writeFileSync(
+      inputPath,
+      Buffer.from(match[1], 'base64')
+    );
+
+    const { default: ffmpegInstaller } =
+      await import('@ffmpeg-installer/ffmpeg');
+    const { spawn } = await import('child_process');
+
+    return await new Promise((resolve, reject) => {
+      const child = spawn(
+        ffmpegInstaller.path,
+        [
+          '-v', 'error',
+          '-i', inputPath,
+          '-vf', 'scale=48:48',
+          '-frames:v', '1',
+          '-f', 'rawvideo',
+          '-pix_fmt', 'gray',
+          'pipe:1'
+        ],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+
+      const chunks = [];
+      let stderr = '';
+
+      child.stdout.on('data', chunk => chunks.push(chunk));
+      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+      child.on('error', reject);
+
+      child.on('close', code => {
+        if (code !== 0) {
+          reject(
+            new Error(
+              'FFmpeg comparaison ' +
+                label +
+                ' failed (' +
+                code +
+                '): ' +
+                stderr.slice(-800)
+            )
+          );
+          return;
+        }
+
+        const bytes = Buffer.concat(chunks);
+
+        if (bytes.length < 48 * 48) {
+          reject(
+            new Error(
+              'FFmpeg comparaison ' +
+                label +
+                ' n’a pas produit assez de pixels.'
+            )
+          );
+          return;
+        }
+
+        resolve(bytes.subarray(0, 48 * 48));
+      });
+    });
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch (_) {}
+  }
+}
+
+async function compareContinuityFrames(expectedDataUrl, actualDataUrl) {
+  const tempId = crypto.randomUUID();
+
+  const expected =
+    await decodeImageToGrayThumbnail(
+      expectedDataUrl,
+      tempId,
+      'expected'
+    );
+
+  const actual =
+    await decodeImageToGrayThumbnail(
+      actualDataUrl,
+      tempId,
+      'actual'
+    );
+
+  let absoluteError = 0;
+
+  for (let i = 0; i < expected.length; i++) {
+    absoluteError += Math.abs(
+      expected[i] - actual[i]
+    );
+  }
+
+  const mae =
+    absoluteError /
+    (expected.length * 255);
+
+  return {
+    ok: mae <= CONTINUITY_START_MAX_MAE,
+    mae
+  };
 }
 
 function restorePersistedContinuityFrame(scene) {
@@ -2019,103 +2337,267 @@ function updateJob(job) {
 async function processJob(job) {
   try {
 
-    job.status =
-      'processing';
-
+    job.status = 'processing';
     updateJob(job);
 
-    for (
-      const scene of job.scenes
-    ) {
+    for (const scene of job.scenes) {
 
-      if (
-        scene.status === 'done'
-      ) {
+      if (scene.status === 'done') {
         continue;
       }
 
-      if (
-        job.status ===
-        'cancelled'
-      ) {
+      if (job.status === 'cancelled') {
         break;
       }
 
-      scene.status =
-        'processing';
-
+      scene.status = 'processing';
       updateJob(job);
 
       try {
 
         const sceneIndex = job.scenes.indexOf(scene);
         const sceneNumber = sceneIndex + 1;
-        const previousScene = sceneIndex > 0 ? job.scenes[sceneIndex - 1] : null;
+        const previousScene =
+          sceneIndex > 0
+            ? job.scenes[sceneIndex - 1]
+            : null;
 
-        if (!scene.videoId) {
+        let continuityRetry =
+          Number(scene.continuityRetry || 0);
+
+        let accepted = false;
+        let continuityImage = null;
+
+        if (sceneIndex > 0) {
+          continuityImage =
+            restorePersistedContinuityFrame(
+              previousScene
+            );
+
+          if (!continuityImage) {
+            throw new Error(
+              'Continuité impossible : la dernière image de la scène ' +
+              sceneIndex +
+              ' est introuvable. Aucun fallback vers l’image maître n’est autorisé.'
+            );
+          }
+        }
+
+        while (!accepted) {
+
+          if (job.status === 'cancelled') {
+            break;
+          }
+
           let sceneInput;
 
           if (sceneIndex === 0) {
+
             sceneInput = {
               ...scene,
               sequenceIndex: 0,
               mode: 'reference',
-              visualBible: job.visualBible || '',
-              images: scene.images?.length
-                ? scene.images
-                : (job.referenceImage ? [job.referenceImage] : [])
+              projectSeed: job.projectSeed,
+              audioSignature: job.audioSignature,
+              continuityRetry
             };
+
+            if (
+              !sceneInput.images?.length &&
+              job.referenceImage
+            ) {
+              sceneInput.images = [
+                job.referenceImage
+              ];
+            }
 
             console.log(
               '[CONTINUITY] Scène 1 → image maître originale utilisée comme référence de départ.'
             );
-          } else {
-            const continuityImage = restorePersistedContinuityFrame(previousScene);
 
-            if (!continuityImage) {
-              throw new Error(
-                'Continuité impossible : la dernière image de la scène ' +
-                sceneIndex +
-                ' est introuvable. Aucun fallback vers l’image maître n’est autorisé.'
-              );
-            }
+          } else {
 
             sceneInput = {
               ...scene,
               sequenceIndex: sceneIndex,
               mode: 'reference',
-              visualBible: job.visualBible || '',
-              images: [continuityImage],
+              projectSeed: job.projectSeed,
+              audioSignature: job.audioSignature,
+              continuityRetry,
+              images: [
+                continuityImage
+              ],
               first_frame: null,
               last_frame: null
             };
 
             console.log(
-              '[CONTINUITY] Scène ' + sceneNumber +
-              ' → UNIQUE référence = dernière image de la scène ' +
+              '[CONTINUITY] Scène ' +
+              sceneNumber +
+              ' → UNIQUE référence temporelle = dernière image de la scène ' +
               sceneIndex +
               ', longueur=' +
               Math.round(continuityImage.length / 1024) +
-              ' KB.'
+              ' KB, tentative=' +
+              (continuityRetry + 1) +
+              '.'
             );
           }
 
-          const created = await createVideoTask(sceneInput, { get: () => '' });
-          scene.videoId = created.videoId;
-          scene.model = created.model;
-          scene.sequenceIndex = sceneIndex;
-          scene.referenceType = sceneIndex === 0 ? 'initial' : 'previous-last-frame';
-          updateJob(job);
-        }
+          const useExistingTask =
+            continuityRetry === 0 &&
+            Boolean(scene.videoId);
 
-        scene.videoUrl =
-          await pollVideo(
-            scene.videoId,
-            {
-              get: () => ''
-            },
-            scene.model || MODEL
-          );
+          if (!useExistingTask) {
+
+            scene.videoId = null;
+            scene.videoUrl = null;
+
+            const created =
+              await createVideoTask(
+                sceneInput,
+                {
+                  get: () => ''
+                }
+              );
+
+            scene.videoId =
+              created.videoId;
+
+            scene.model =
+              created.model;
+
+            scene.sequenceIndex =
+              sceneIndex;
+
+            scene.referenceType =
+              sceneIndex === 0
+                ? 'initial'
+                : 'previous-last-frame';
+
+            scene.continuityRetry =
+              continuityRetry;
+
+            updateJob(job);
+          }
+
+          const generatedUrl =
+            await pollVideo(
+              scene.videoId,
+              {
+                get: () => ''
+              },
+              scene.model || MODEL
+            );
+
+          const boundaries =
+            await extractSceneBoundaryFrames(
+              generatedUrl,
+              job.id,
+              sceneNumber,
+              true
+            );
+
+          if (sceneIndex > 0) {
+
+            const comparison =
+              await compareContinuityFrames(
+                continuityImage,
+                boundaries.firstDataUrl
+              );
+
+            scene.continuityMae =
+              Number(comparison.mae.toFixed(4));
+
+            console.log(
+              '[CONTINUITY CHECK] Scène ' +
+              sceneNumber +
+              ' → frame 0 vs dernière frame S' +
+              sceneIndex +
+              ' MAE=' +
+              comparison.mae.toFixed(4) +
+              ' (seuil=' +
+              CONTINUITY_START_MAX_MAE.toFixed(2) +
+              ')'
+            );
+
+            if (!comparison.ok) {
+
+              if (
+                continuityRetry <
+                MAX_CONTINUITY_RETRIES
+              ) {
+
+                continuityRetry += 1;
+                scene.continuityRetry =
+                  continuityRetry;
+                scene.videoId =
+                  null;
+                scene.videoUrl =
+                  null;
+
+                console.warn(
+                  '[CONTINUITY RETRY] Scène ' +
+                  sceneNumber +
+                  ' rejetée : ouverture trop différente de la dernière frame précédente. Nouvelle génération interne, tentative ' +
+                  (continuityRetry + 1) +
+                  '/' +
+                  (MAX_CONTINUITY_RETRIES + 1) +
+                  '.'
+                );
+
+                updateJob(job);
+                continue;
+              }
+
+              throw new Error(
+                'Continuité visuelle insuffisante après ' +
+                (MAX_CONTINUITY_RETRIES + 1) +
+                ' générations internes : frame 0 trop différente de la dernière image de la scène précédente (MAE=' +
+                comparison.mae.toFixed(3) +
+                ').'
+              );
+            }
+          }
+
+          scene.videoUrl =
+            generatedUrl;
+
+          if (
+            sceneIndex <
+            job.scenes.length - 1
+          ) {
+
+            if (!boundaries.lastDataUrl) {
+              throw new Error(
+                'Continuité : dernière image absente pour la scène ' +
+                sceneNumber
+              );
+            }
+
+            scene.last_frame =
+              boundaries.lastDataUrl;
+
+            scene.last_frame_path =
+              boundaries.filePath;
+
+            scene.last_frame_hash =
+              boundaries.lastHash;
+
+            scene.referenceReadyForNext =
+              true;
+
+            console.log(
+              '[CONTINUITY] Scène ' +
+              sceneNumber +
+              ' → frame finale validée et prête pour la scène ' +
+              (sceneNumber + 1) +
+              '.'
+            );
+          }
+
+          accepted = true;
+        }
 
         if (job.status === 'cancelled') {
           scene.videoUrl = null;
@@ -2123,60 +2605,27 @@ async function processJob(job) {
           break;
         }
 
-        if (sceneIndex < job.scenes.length - 1) {
-          try {
-            const captured = await extractLastFrameAsDataUrl(
-              scene.videoUrl,
-              job.id,
-              sceneNumber
-            );
-            scene.last_frame = captured.dataUrl;
-            scene.last_frame_path = captured.filePath;
-            scene.last_frame_hash = captured.hash;
-            scene.referenceReadyForNext = true;
-            console.log(
-              '[CONTINUITY] Scène ' + sceneNumber +
-              ' → frame finale prête pour la scène ' + (sceneNumber + 1) + '.'
-            );
-          } catch (frameError) {
-            throw new Error(
-              'Continuité scène ' + sceneNumber +
-              ' : impossible d’extraire la dernière image — ' +
-              String(frameError?.message || frameError)
-            );
-          }
+        if (!accepted) {
+          break;
         }
 
-        scene.status =
-          'done';
-
-        scene.error =
-          null;
-
-        job.error =
-          null;
+        scene.status = 'done';
+        scene.error = null;
+        job.error = null;
 
       } catch (error) {
 
         const message =
-          String(
-            error?.message ||
-            error
-          );
+          String(error?.message || error);
 
-        scene.status =
-          'failed';
+        scene.status = 'failed';
+        scene.error = message;
 
-        scene.error =
-          message;
-
-        const sceneIndex =
-          job.scenes.indexOf(
-            scene
-          ) + 1;
+        const failedSceneIndex =
+          job.scenes.indexOf(scene) + 1;
 
         job.error =
-          `Scène ${sceneIndex}: ${message}`;
+          `Scène ${failedSceneIndex}: ${message}`;
 
         console.error(
           '[JOB FAILED]',
@@ -2184,9 +2633,7 @@ async function processJob(job) {
           job.error
         );
 
-        job.status =
-          'failed';
-
+        job.status = 'failed';
         updateJob(job);
 
         break;
@@ -2200,30 +2647,26 @@ async function processJob(job) {
     } else if (
       job.scenes.length > 0 &&
       job.scenes.every(
-        s =>
-          s.status === 'done'
+        s => s.status === 'done'
       )
     ) {
-
-      job.status =
-        'completed';
-
+      job.status = 'completed';
     } else if (
-      job.status !==
-      'failed' &&
-      job.status !==
-      'cancelled'
+      job.status !== 'failed' &&
+      job.status !== 'cancelled'
     ) {
-
-      job.status =
-        'queued';
+      job.status = 'queued';
     }
 
     updateJob(job);
 
   } catch (error) {
 
-    console.error('[WORKER ERROR]', job.id, error);
+    console.error(
+      '[WORKER ERROR]',
+      job.id,
+      error
+    );
 
   } finally {
     activeJobIds.delete(job.id);
@@ -2342,6 +2785,29 @@ app.post(
     const hasSharedLegacyReference = Boolean(sharedReference) && scenes.every(scene =>
       Array.isArray(scene.images) && scene.images.length === 1 && scene.images[0] === sharedReference
     );
+    const cleanVisualBible =
+      typeof visualBible === 'string'
+        ? visualBible.trim().slice(0, 12000)
+        : '';
+
+    const projectSeed =
+      makeProjectSeed(
+        sharedReference,
+        cleanVisualBible
+      );
+
+    const audioSignature =
+      makeProjectAudioSignature(
+        projectSeed,
+        cleanVisualBible
+      );
+
+    console.log(
+      '[SEQUENCE IDENTITY] projectSeed=' +
+      projectSeed +
+      ' audioSignature=' +
+      audioSignature
+    );
 
     const id =
       crypto.randomUUID();
@@ -2366,9 +2832,11 @@ app.post(
 
       // Permanent project-level identity/environment anchor reused by every scene.
       visualBible:
-        typeof visualBible === 'string'
-          ? visualBible.trim().slice(0, 12000)
-          : '',
+        cleanVisualBible,
+
+      projectSeed,
+
+      audioSignature,
 
       scenes:
         scenes.map(
@@ -2466,6 +2934,12 @@ app.post(
                 null,
 
               model:
+                null,
+
+              continuityRetry:
+                0,
+
+              continuityMae:
                 null,
 
               error:
