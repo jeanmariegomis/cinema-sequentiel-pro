@@ -1,4 +1,4 @@
-name: Repair V9.4 API response handling
+name: Agnes performance patch
 
 on:
   push:
@@ -11,105 +11,50 @@ permissions:
   contents: write
 
 jobs:
-  repair:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Patch client and server
+      - name: Patch Agnes polling
         shell: python
         run: |
           from pathlib import Path
 
-          index = Path('cinema_v9/public/index.html')
           server = Path('cinema_v9/server.js')
+          text = server.read_text(encoding='utf-8')
 
-          text = index.read_text(encoding='utf-8')
+          marker = "  const basePollDelay =\n    2000;"
+          replacement = "  const basePollDelay =\n    2000;\n\n  const nearCompletionPollDelay =\n    1000;"
 
-          marker = 'async function startGeneration() {'
-          helper = r'''async function readJsonResponseSafe(res, context = 'serveur') {
-    const raw = await res.text();
-    const body = raw.trim();
-    if (!body) {
-        throw new Error(`${context}: réponse vide du serveur (HTTP ${res.status})`);
-    }
-    try {
-        return JSON.parse(body);
-    } catch (error) {
-        const preview = body.slice(0, 300).replace(/\\s+/g, ' ');
-        throw new Error(`${context}: réponse JSON invalide (HTTP ${res.status})${preview ? ` — ${preview}` : ''}`);
-    }
-}
-'''
-
-          if 'async function readJsonResponseSafe(' not in text:
+          if 'const nearCompletionPollDelay' not in text:
               if marker not in text:
-                  raise SystemExit('startGeneration marker not found')
-              text = text.replace(marker, helper + '\n' + marker, 1)
+                  raise SystemExit('poll delay marker not found in current server.js')
+              text = text.replace(marker, replacement, 1)
 
-          old = "const data = await res.json();"
-          new = "const data = await readJsonResponseSafe(res, 'Création du job');"
-          if old not in text:
-              raise SystemExit('POST response.json() not found')
-          text = text.replace(old, new, 1)
+          marker2 = "  function getAdaptivePollDelay(progress) {\n    if (progress == null) {\n      return basePollDelay;\n    }"
+          replacement2 = "  function getAdaptivePollDelay(progress) {\n    if (progress == null) {\n      return basePollDelay;\n    }\n\n    if (Number(progress) >= 90) {\n      return nearCompletionPollDelay;\n    }"
 
-          old2 = "const job = await res.json();"
-          new2 = "const job = await readJsonResponseSafe(res, 'Lecture du job');"
-          if old2 not in text:
-              raise SystemExit('GET job response.json() not found')
-          text = text.replace(old2, new2, 1)
+          if 'return nearCompletionPollDelay;' not in text:
+              if marker2 not in text:
+                  raise SystemExit('adaptive polling marker not found in current server.js')
+              text = text.replace(marker2, replacement2, 1)
 
-          index.write_text(text, encoding='utf-8')
+          server.write_text(text, encoding='utf-8')
 
-          s = server.read_text(encoding='utf-8')
-
-          old_server = '''    // Launch immediately.\n    setImmediate(() => {\n    processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n    });\n});\n\n    return res\n      .status(202)\n      .json({\n\n        id:\n          id,\n\n        status:\n          'queued'\n      });'''
-          new_server = '''    // Send the HTTP response BEFORE starting the worker.\n    // This prevents a heavy/failed worker startup from truncating the JSON response.\n    res.status(202).json({\n      id: id,\n      status: 'queued'\n    });\n\n    // Start the worker only after the response has been handed to Node.\n    setTimeout(() => {\n      processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n      });\n    }, 0);\n\n    return;'''
-          if old_server in s:
-              s = s.replace(old_server, new_server, 1)
-
-          old_worker = '''          const sceneInput = {\n            ...scene,\n            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
-          new_worker = '''          // Preserve each scene's own reference image(s).\n          // Use the shared master reference only when this scene has no image of its own.\n          const sceneInput = {\n            ...scene,\n            images: scene.images?.length\n              ? scene.images\n              : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
-          if old_worker in s:
-              s = s.replace(old_worker, new_worker, 1)
-
-          old_storage = '''              images:\n                hasSharedLegacyReference || suppliedReference\n                  ? []\n                  : images,'''
-          new_storage = '''              // Keep scene-specific references intact.\n              // A shared reference is only a fallback for scenes without their own image.\n              images: images,'''
-          if old_storage in s:
-              s = s.replace(old_storage, new_storage, 1)
-
-          # PERF V2: reduce only the time spent waiting to notice completion.
-          # Do not change Agnes model, creation payload, auth, download, or client progress semantics.
-          poll_marker = "  const basePollDelay =\n    2000;"
-          poll_replacement = "  const basePollDelay =\n    2000;\n\n  const nearCompletionPollDelay =\n    1000;"
-          if poll_marker in s and 'const nearCompletionPollDelay' not in s:
-              s = s.replace(poll_marker, poll_replacement, 1)
-
-          adaptive_marker = "  function getAdaptivePollDelay(progress) {\n    if (progress == null) {\n      return basePollDelay;\n    }"
-          adaptive_replacement = "  function getAdaptivePollDelay(progress) {\n    if (progress == null) {\n      return basePollDelay;\n    }\n\n    // Once Agnes is near completion, check more frequently so the final\n    // result is not hidden behind a 2–6 second polling interval.\n    if (Number(progress) >= 90) {\n      return nearCompletionPollDelay;\n    }"
-          if adaptive_marker in s and 'Once Agnes is near completion' not in s:
-              s = s.replace(adaptive_marker, adaptive_replacement, 1)
-
-          server.write_text(s, encoding='utf-8')
-
-      - name: Verify patches
+      - name: Verify
         run: |
-          grep -n "readJsonResponseSafe" cinema_v9/public/index.html
-          grep -n "Send the HTTP response" cinema_v9/server.js
-          grep -n "Preserve each scene's own reference" cinema_v9/server.js
-          grep -n "Keep scene-specific references intact" cinema_v9/server.js
           grep -n "nearCompletionPollDelay" cinema_v9/server.js
-          grep -n "Once Agnes is near completion" cinema_v9/server.js
           grep -n "agnes-video-v2.0" cinema_v9/server.js
 
-      - name: Commit repair
+      - name: Commit server patch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cinema_v9/public/index.html cinema_v9/server.js
+          git add cinema_v9/server.js
           if git diff --cached --quiet; then
-            echo "No changes needed."
+            echo "No server changes needed."
           else
             git commit -m "perf: reduce Agnes completion polling latency"
             git push
