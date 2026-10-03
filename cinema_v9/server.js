@@ -1151,6 +1151,9 @@ function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
     : 'SERVER-LOCKED VISUAL BIBLE: none supplied; rely on the supplied reference image and scene prompt.';
 
   return [
+    'SCENE STATE LOCK: treat the supplied reference image and established scene state as authoritative. Do not reinterpret, replace, morph, duplicate, remove or reset persistent people, animals, props, materials or spatial relationships unless the written scene explicitly requires that change.',
+    'OBJECT STATE LOCK: every important object has identity plus state. Preserve object type, shape, color, material, size, orientation, markings, fill level, contents, texture, temperature/physical form when visually inferable, and relationship to the subject. An object cannot disappear and reappear as a different object between adjacent moments.',
+    'MATERIAL CONSISTENCY LOCK: substances retain their visual identity and physical state until an explicit transformation is performed. Never turn a liquid into a solid, paste, dough, batter, sauce or powder without a visible requested action causing that transformation.',
     'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot and across the entire sequence.',
     'FACIAL IDENTITY LOCK: preserve exact face shape, facial proportions, eye shape/color, eyebrows, eyelids, nose, lips, jawline, freckles, skin tone, age and distinctive facial features. Never redraw, beautify or replace the character with a different person.',
     'HAIR IDENTITY LOCK: hairstyle is a fixed biometric identifier. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline, recolor the hair or alter the silhouette unless explicitly requested.',
@@ -1163,7 +1166,7 @@ function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
     'PERFORMANCE IDENTITY LOCK: preserve the established character’s baseline temperament, social attitude, energy, gaze behavior, gesture style and emotional realism across the sequence. Do not automatically turn a calm/focused character into a smiling, flirtatious, excited, angry or theatrical version unless the scene explicitly requests that emotional change.',
     'EXPRESSION CONTINUITY LOCK: facial expressions must evolve gradually from the previous visible emotional state. No unexplained smile, smirk, surprise, exaggerated reaction, personality switch or emotional reset.',
     'REALISTIC CINEMATIC MOTION: use natural anatomy, believable weight/inertia, realistic hands and facial motion, natural eye focus/blinking, coherent shadows/reflections, cinematic depth of field and restrained camera movement.',
-    'The supplied reference image defines identity and appearance. The scene prompt defines the intended action. Camera instructions must be realized as continuous motion, not as shot replacement. Animate the existing subject instead of inventing a replacement.',
+    'The supplied reference image defines identity, appearance, object states and starting composition. The scene prompt defines the intended action and any explicit state changes. Camera instructions must be realized as continuous motion, not as shot replacement. Animate the existing scene instead of inventing a replacement.',
     lockedBible,
     buildProjectAudioContinuityPrompt(audioSignature, prompt),
     'AUDIO PRESENCE POLICY: scripted dialogue is preserved. Natural diegetic sound from the visible action may be present. Background music is OFF unless this scene explicitly requests music.',
@@ -1173,7 +1176,14 @@ function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
   ].join('\n\n');
 }
 
-function buildContinuationPrompt(prompt, visualBible = '', audioSignature = '') {
+function buildContinuationPrompt(
+  prompt,
+  visualBible = '',
+  audioSignature = '',
+  previousScenePrompt = ''
+) {
+  const previousState = normalizeSeedPrompt(previousScenePrompt || '').slice(0, 7000);
+
   return [
     'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot, not as inspiration or a loose reference.',
     'FIRST 1.0 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props, lighting and emotional state visually stable before introducing substantial motion.',
@@ -1181,7 +1191,13 @@ function buildContinuationPrompt(prompt, visualBible = '', audioSignature = '') 
     'HAIR AND FACE MUST MATCH THE SUPPLIED FRAME: hair length, curl pattern, hairline, volume, color, face shape, eyes and all visible identity details must remain unchanged while the new action begins.',
     'PERSONALITY MUST CARRY FORWARD: begin with the same temperament, gaze, facial attitude, body language and level of energy visible at the end of the previous scene. Any emotional change must have a visible cause in the new scene action.',
     'CAMERA MUST CARRY FORWARD: continue from the previous frame’s composition with one smooth camera path. No internal cut, jump in angle, snap zoom, sudden lens change, mirrored view or instant reframing. Any later camera movement must start gradually from this established state.',
-    'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible is the permanent identity/environment constraint.',
+    'OBJECT STATE MUST CARRY FORWARD: every persistent prop keeps its exact identity, material, color, shape, size, position relationship and physical state from the previous final frame. A bowl remains the same bowl. Its contents remain the same substance, color, approximate amount and consistency unless the new scene explicitly performs and visibly completes a state change.',
+    'LIQUID/PREPARATION STATE LOCK: never transform milk, water, juice, oil, batter, dough, sauce, powder, food or any other material into a different substance merely because the next action is plausible. A state change is allowed only when explicitly requested and must happen through a visible, continuous physical action.',
+    'PREVIOUS SCENE STATE IS AUTHORITATIVE: the previous scene prompt below is a state-history reference. Carry forward all established people, animals, props and material states that are not explicitly changed by the new scene. The current scene prompt may add an action, but it may not silently rewrite established state.',
+    previousState
+      ? 'PREVIOUS SCENE STATE HISTORY (AUTHORITATIVE FOR PERSISTENT STATE):\n' + previousState
+      : 'PREVIOUS SCENE STATE HISTORY: unavailable; rely strictly on the supplied final-frame image.',
+    'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible and state history are permanent continuity constraints.',
     'CONTINUITY COMPOSITION LOCK: during the first 1.0 second, do not zoom, crop, reframe, cut, rotate, mirror, change camera height, or change focal relationship. The first generated frames must remain visually close to the supplied previous final frame.',
     'PERSISTENT SUBJECT LOCK: every established permanent character or animal visible in the previous final frame remains present unless the scene explicitly instructs an exit. Do not silently remove the cat, replace the woman, or invent a new subject.',
     buildConsistencyPrompt(prompt, visualBible, audioSignature)
@@ -1400,9 +1416,17 @@ async function createVideoTask(
   const visualBible = String(scene.visualBible || '').trim();
   const audioSignature = String(scene.audioSignature || '').trim();
 
+  const previousScenePrompt =
+    String(scene.previousScenePrompt || '').trim();
+
   const continuityPrompt =
     sequenceIndex > 0
-      ? buildContinuationPrompt(prompt, visualBible, audioSignature)
+      ? buildContinuationPrompt(
+          prompt,
+          visualBible,
+          audioSignature,
+          previousScenePrompt
+        )
       : buildConsistencyPrompt(prompt, visualBible, audioSignature);
 
   const primaryBody = {
@@ -1429,7 +1453,7 @@ async function createVideoTask(
       : {}),
 
     negative_prompt:
-      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra person, duplicate animal, extra animal, second cat, cloned cat, unrequested talking animal, animal lip-sync without scripted dialogue, unrequested human voice, unrequested narration, unrequested speech, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, hair length change, hairline change, curl pattern change, hair silhouette change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'  };
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra person, duplicate animal, extra animal, second cat, cloned cat, unrequested talking animal, animal lip-sync without scripted dialogue, unrequested human voice, unrequested narration, unrequested speech, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, hair length change, hairline change, curl pattern change, hair silhouette change, skin tone change, clothing change, prop disappearance, prop duplication, object morphing, object replacement, material morphing, liquid-to-solid morph, milk-to-dough morph, bowl disappearance, target disappearance, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'  };
 
   if (mode === 'keyframe') {
     const keyframeImages = [
@@ -2569,6 +2593,10 @@ async function processJob(job) {
               projectSeed: job.projectSeed,
               audioSignature: job.audioSignature,
               continuityRetry,
+              previousScenePrompt:
+                String(
+                  previousScene?.prompt || ''
+                ).trim(),
               images: [
                 continuityImage
               ],
