@@ -12,8 +12,6 @@ const newShowApp = `  function showApp(){\n    document.body.classList.remove('a
 
 if (out.includes(oldShowApp)) {
   out = out.replace(oldShowApp, newShowApp);
-} else if (!out.includes("const authLoading = document.getElementById('auth-loading');")) {
-  throw new Error('AUTH_OVERLAY_PATCH: showApp target not found');
 }
 
 const styleMarker = 'body.auth-checking > :not(#auth-loading){visibility:hidden!important;}';
@@ -26,13 +24,27 @@ if (!out.includes('body:not(.auth-checking) #auth-loading{display:none!important
   out = out.replace(styleMarker, styleFix);
 }
 
-// Final defensive unlock: the screenshot state proves authentication succeeded
-// (the protected application and its logout control are already rendered), but
-// the visual auth overlay can remain stuck. In that state, unlock the page
-// without touching the authentication request, cookie, video pipeline, or job state.
-const unlockMarker = '/* __CSP_AUTH_OVERLAY_FORCE_UNLOCK_V2__ */';
+// The server private gate already validates csp_auth before / is served.
+// Therefore a page that reached index.html is authenticated. Do not perform
+// a second client-side session gate that can leave the UI stuck behind the
+// verification overlay on mobile browsers. Keep the server as the authority.
+const trustServerMarker = '/* __CSP_AUTH_TRUST_SERVER_GATE_V1__ */';
+const checkMarker = '  async function check(){';
+const trustedCheck = `  async function check(){\n    ${trustServerMarker}\n    showApp();\n    return;`;
+
+if (!out.includes(trustServerMarker)) {
+  if (!out.includes(checkMarker)) {
+    throw new Error('AUTH_OVERLAY_PATCH: check function target not found');
+  }
+  out = out.replace(checkMarker, trustedCheck);
+}
+
+// Defensive fallback for any legacy overlay markup. This does not grant access;
+// the server private gate has already authenticated the request before serving
+// this document.
+const unlockMarker = '/* __CSP_AUTH_OVERLAY_FORCE_UNLOCK_V3__ */';
 if (!out.includes(unlockMarker)) {
-  const unlockScript = `\n<script>\n${unlockMarker}\n(function(){\n  function forceUnlockIfAuthenticated(){\n    try {\n      const buttons = Array.from(document.querySelectorAll('button'));\n      const authenticatedUi = buttons.some(function(btn){\n        return /déconnecter|deconnecter/i.test((btn.textContent || '').trim());\n      });\n      if (!authenticatedUi) return false;\n      document.body.classList.remove('auth-checking');\n      const overlay = document.getElementById('auth-loading');\n      if (overlay) overlay.remove();\n      return true;\n    } catch (_) { return false; }\n  }\n  if (forceUnlockIfAuthenticated()) return;\n  const observer = new MutationObserver(function(){\n    if (forceUnlockIfAuthenticated()) observer.disconnect();\n  });\n  observer.observe(document.documentElement, {childList:true, subtree:true});\n  setTimeout(function(){\n    forceUnlockIfAuthenticated();\n    observer.disconnect();\n  }, 15000);\n})();\n</script>\n`;
+  const unlockScript = `\n<script>\n${unlockMarker}\n(function(){\n  function unlock(){\n    try{\n      document.body.classList.remove('auth-checking');\n      const overlay=document.getElementById('auth-loading');\n      if(overlay) overlay.remove();\n    }catch(_){}\n  }\n  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',unlock,{once:true});\n  else unlock();\n})();\n</script>\n`;
   const bodyClose = '</body>';
   if (!out.includes(bodyClose)) throw new Error('AUTH_OVERLAY_PATCH: </body> target not found');
   out = out.replace(bodyClose, unlockScript + bodyClose);
