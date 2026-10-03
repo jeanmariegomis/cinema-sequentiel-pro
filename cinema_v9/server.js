@@ -2366,7 +2366,7 @@ async function compareContinuityFrames(expectedDataUrl, actualDataUrl) {
   };
 }
 
-function restorePersistedContinuityFramee(scene) {
+function restorePersistedContinuityFrame(scene) {
   if (scene?.last_frame) return scene.last_frame;
 
   const filePath = String(scene?.last_frame_path || '');
