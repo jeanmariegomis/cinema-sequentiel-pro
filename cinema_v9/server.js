@@ -2096,36 +2096,20 @@ async function extractSceneBoundaryFrames(
     );
 
     if (includeLastFrame) {
-      try {
-        await runExtraction(
-          [
-            '-sseof', '-1',
-            '-i', inputPath,
-            '-frames:v', '1',
-            '-q:v', '2',
-            '-f', 'image2'
-          ],
-          lastFramePath,
-          'dernière frame'
-        );
-      } catch (firstError) {
-        console.warn(
-          '[CONTINUITY] Première extraction finale échouée, nouvelle tentative plus large…',
-          firstError.message
-        );
-
-        await runExtraction(
-          [
-            '-sseof', '-2',
-            '-i', inputPath,
-            '-frames:v', '1',
-            '-q:v', '2',
-            '-f', 'image2'
-          ],
-          lastFramePath,
-          'dernière frame (fallback)'
-        );
-      }
+      // Capture the frame immediately before the actual end of the MP4.
+      // The previous -sseof -1 seek could land roughly one second before the end,
+      // so continuation could start from the wrong visual state.
+      await runExtraction(
+        [
+          '-sseof', '-0.001',
+          '-i', inputPath,
+          '-frames:v', '1',
+          '-q:v', '2',
+          '-f', 'image2'
+        ],
+        lastFramePath,
+        'dernière frame exacte'
+      );
     }
 
     const firstJpg = fs.readFileSync(firstFramePath);
@@ -2198,7 +2182,7 @@ async function extractSceneBoundaryFrames(
   }
 }
 
-async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
+async function decodeImageToRgbThumbnail(dataUrl, tempId, label) {
   const match = String(dataUrl || '').match(
     /^data:[^;,]+(?:;[^,]*)?;base64,(.+)$/is
   );
@@ -2211,6 +2195,9 @@ async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
     DATA_DIR,
     '__csp_compare_' + tempId + '_' + label + '.jpg'
   );
+
+  const size = 96;
+  const expectedBytes = size * size * 3;
 
   try {
     fs.writeFileSync(
@@ -2228,10 +2215,11 @@ async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
         [
           '-v', 'error',
           '-i', inputPath,
-          '-vf', 'scale=48:48',
+          '-vf',
+          'scale=96:96:force_original_aspect_ratio=decrease,pad=96:96:(ow-iw)/2:(oh-ih)/2:color=black',
           '-frames:v', '1',
           '-f', 'rawvideo',
-          '-pix_fmt', 'gray',
+          '-pix_fmt', 'rgb24',
           'pipe:1'
         ],
         { stdio: ['ignore', 'pipe', 'pipe'] }
@@ -2261,7 +2249,7 @@ async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
 
         const bytes = Buffer.concat(chunks);
 
-        if (bytes.length < 48 * 48) {
+        if (bytes.length < expectedBytes) {
           reject(
             new Error(
               'FFmpeg comparaison ' +
@@ -2272,7 +2260,7 @@ async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
           return;
         }
 
-        resolve(bytes.subarray(0, 48 * 48));
+        resolve(bytes.subarray(0, expectedBytes));
       });
     });
   } finally {
@@ -2280,18 +2268,71 @@ async function decodeImageToGrayThumbnail(dataUrl, tempId, label) {
   }
 }
 
+function makePerceptualHashRgb(rgb, size = 96, grid = 16) {
+  const values = new Float64Array(grid * grid);
+  let sum = 0;
+
+  for (let gy = 0; gy < grid; gy++) {
+    const yStart = Math.floor(gy * size / grid);
+    const yEnd = Math.max(yStart + 1, Math.floor((gy + 1) * size / grid));
+
+    for (let gx = 0; gx < grid; gx++) {
+      const xStart = Math.floor(gx * size / grid);
+      const xEnd = Math.max(xStart + 1, Math.floor((gx + 1) * size / grid));
+
+      let total = 0;
+      let count = 0;
+
+      for (let y = yStart; y < yEnd; y++) {
+        for (let x = xStart; x < xEnd; x++) {
+          const idx = (y * size + x) * 3;
+          const r = rgb[idx];
+          const g = rgb[idx + 1];
+          const b = rgb[idx + 2];
+          total += 0.299 * r + 0.587 * g + 0.114 * b;
+          count++;
+        }
+      }
+
+      const value = count ? total / count : 0;
+      values[gy * grid + gx] = value;
+      sum += value;
+    }
+  }
+
+  const mean = sum / values.length;
+  const bits = new Uint8Array(values.length);
+
+  for (let i = 0; i < values.length; i++) {
+    bits[i] = values[i] >= mean ? 1 : 0;
+  }
+
+  return bits;
+}
+
+function hammingDistance(a, b) {
+  const length = Math.min(a.length, b.length);
+  let different = 0;
+
+  for (let i = 0; i < length; i++) {
+    if (a[i] !== b[i]) different++;
+  }
+
+  return length ? different / length : 1;
+}
+
 async function compareContinuityFrames(expectedDataUrl, actualDataUrl) {
   const tempId = crypto.randomUUID();
 
   const expected =
-    await decodeImageToGrayThumbnail(
+    await decodeImageToRgbThumbnail(
       expectedDataUrl,
       tempId,
       'expected'
     );
 
   const actual =
-    await decodeImageToGrayThumbnail(
+    await decodeImageToRgbThumbnail(
       actualDataUrl,
       tempId,
       'actual'
@@ -2305,17 +2346,27 @@ async function compareContinuityFrames(expectedDataUrl, actualDataUrl) {
     );
   }
 
-  const mae =
+  const rgbMae =
     absoluteError /
     (expected.length * 255);
 
+  const hashDistance =
+    hammingDistance(
+      makePerceptualHashRgb(expected),
+      makePerceptualHashRgb(actual)
+    );
+
   return {
-    ok: mae <= CONTINUITY_START_MAX_MAE,
-    mae
+    ok:
+      rgbMae <= 0.12 &&
+      hashDistance <= 0.18,
+    mae: rgbMae,
+    rgbMae,
+    hashDistance
   };
 }
 
-function restorePersistedContinuityFrame(scene) {
+function restorePersistedContinuityFramee(scene) {
   if (scene?.last_frame) return scene.last_frame;
 
   const filePath = String(scene?.last_frame_path || '');
@@ -2419,7 +2470,11 @@ async function processJob(job) {
             }
 
             console.log(
-              '[CONTINUITY] Scène 1 → image maître originale utilisée comme référence de départ.'
+              '[CONTINUITY] Scène 1 → image maître originale utilisée comme référence de départ, sha256=' +
+              fingerprintImage(
+                sceneInput.images?.[0] || job.referenceImage || ''
+              ).slice(0, 16) +
+              '….'
             );
 
           } else {
@@ -2438,14 +2493,19 @@ async function processJob(job) {
               last_frame: null
             };
 
+            const continuityReferenceHash =
+              fingerprintImage(continuityImage);
+
             console.log(
               '[CONTINUITY] Scène ' +
               sceneNumber +
-              ' → UNIQUE référence temporelle = dernière image de la scène ' +
+              ' → UNIQUE référence temporelle = dernière frame exacte de la scène ' +
               sceneIndex +
               ', longueur=' +
               Math.round(continuityImage.length / 1024) +
-              ' KB, tentative=' +
+              ' KB, sha256=' +
+              continuityReferenceHash.slice(0, 16) +
+              '…, tentative=' +
               (continuityRetry + 1) +
               '.'
             );
@@ -2519,13 +2579,15 @@ async function processJob(job) {
             console.log(
               '[CONTINUITY CHECK] Scène ' +
               sceneNumber +
-              ' → frame 0 vs dernière frame S' +
+              ' → frame 0 vs dernière frame exacte S' +
               sceneIndex +
-              ' MAE=' +
-              comparison.mae.toFixed(4) +
-              ' (seuil=' +
-              CONTINUITY_START_MAX_MAE.toFixed(2) +
-              ')'
+              ' RGB-MAE=' +
+              comparison.rgbMae.toFixed(4) +
+              ' HASH-DIST=' +
+              comparison.hashDistance.toFixed(4) +
+              ' (seuils RGB≤0.12, HASH≤0.18) firstSha=' +
+              boundaries.firstHash.slice(0, 16) +
+              '…'
             );
 
             if (!comparison.ok) {
@@ -2546,7 +2608,11 @@ async function processJob(job) {
                 console.warn(
                   '[CONTINUITY RETRY] Scène ' +
                   sceneNumber +
-                  ' rejetée : ouverture trop différente de la dernière frame précédente. Nouvelle génération interne, tentative ' +
+                  ' rejetée : ouverture différente de la dernière frame exacte précédente (RGB-MAE=' +
+                  comparison.rgbMae.toFixed(4) +
+                  ', HASH-DIST=' +
+                  comparison.hashDistance.toFixed(4) +
+                  '). Nouvelle génération interne, tentative ' +
                   (continuityRetry + 1) +
                   '/' +
                   (MAX_CONTINUITY_RETRIES + 1) +
@@ -2560,8 +2626,10 @@ async function processJob(job) {
               throw new Error(
                 'Continuité visuelle insuffisante après ' +
                 (MAX_CONTINUITY_RETRIES + 1) +
-                ' générations internes : frame 0 trop différente de la dernière image de la scène précédente (MAE=' +
-                comparison.mae.toFixed(3) +
+                ' générations internes : frame 0 trop différente de la dernière frame exacte de la scène précédente (RGB-MAE=' +
+                comparison.rgbMae.toFixed(3) +
+                ', HASH-DIST=' +
+                comparison.hashDistance.toFixed(3) +
                 ').'
               );
             }
