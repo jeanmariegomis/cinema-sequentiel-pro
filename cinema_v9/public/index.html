@@ -1254,7 +1254,7 @@ function renderScenes() {
             refBadge +
             refThumb +
             (s.error ? '<div style="font-size:0.72rem;color:var(--error);margin-top:0.4rem;">⚠ ' + esc(s.error) + '</div>' : '') +
-            (s.videoUrl ? '<div style="margin-top:0.6rem;"><video src="' + s.videoUrl + '" controls muted playsinline style="width:100%;max-height:220px;border-radius:10px;"></video></div>' : '') +
+            (s.videoUrl ? '<div style="margin-top:0.6rem;"><video src="' + s.videoUrl + '" controls playsinline style="width:100%;max-height:220px;border-radius:10px;"></video></div>' : '') +
             '<div class="scene-card-actions">' +
                 '<button data-action="edit" data-idx="' + i + '">✏️ Modifier</button>' +
                 (s.videoUrl ? '<button data-action="download" data-idx="' + i + '">⬇ Télécharger</button>' : '') +
@@ -1402,7 +1402,7 @@ function addToGallery(videoUrl, label) {
     galleryEl.classList.remove('hidden');
     const el = document.createElement('div');
     el.className = 'gallery-item';
-    el.innerHTML = '<video controls preload="metadata" muted playsinline>' +
+    el.innerHTML = '<video controls preload="metadata" playsinline>' +
         '<source src="' + videoUrl + '" type="video/mp4">' +
         '</video>' +
         '<div class="g-badge">' + esc(label) + '</div>' +
