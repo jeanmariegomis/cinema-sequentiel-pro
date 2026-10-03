@@ -2,16 +2,61 @@
 // Runs before bootstrap/server.js and only rewrites POST /videos JSON prompts.
 // It does not touch authentication, job polling, downloads, progress, or continuity state.
 
+import crypto from 'crypto';
+
 const ORIGINAL_FETCH = globalThis.fetch;
-const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE/PERFORMANCE GUARD V8]';
+const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE/PERFORMANCE GUARD V9]';
+
+function makeReferenceAnchoredSeed(body, prompt) {
+  const explicitSeed = Number(body?.seed);
+  if (Number.isSafeInteger(explicitSeed) && explicitSeed >= 0) {
+    return explicitSeed;
+  }
+
+  const images = [];
+  for (const value of [
+    ...(Array.isArray(body?.images) ? body.images.slice(0, 5) : []),
+    body?.image,
+    body?.first_frame,
+    body?.last_frame
+  ]) {
+    if (!value) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    const match = text.match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/is);
+    try {
+      const hash = match
+        ? crypto.createHash('sha256').update(Buffer.from(match[2], 'base64')).digest('hex')
+        : crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+      images.push(hash);
+    } catch (_) {}
+  }
+
+  const material = JSON.stringify({
+    purpose: 'csp-reference-anchored-agnes-seed-v9',
+    prompt: String(prompt || '').trim(),
+    images,
+    mode: String(body?.mode || '').trim().toLowerCase(),
+    width: Number(body?.width) || null,
+    height: Number(body?.height) || null,
+    frames: Number(body?.num_frames) || null,
+    frameRate: Number(body?.frame_rate) || null,
+    sequenceIndex: Number.isInteger(Number(body?.sequenceIndex)) ? Number(body.sequenceIndex) : 0,
+    projectSeed: Number.isSafeInteger(Number(body?.projectSeed)) ? Number(body.projectSeed) : null
+  });
+
+  return crypto.createHash('sha256').update(material, 'utf8').digest().readUInt32BE(0);
+}
 
 function buildGuard(prompt) {
   const text = String(prompt || '');
   const lower = text.toLowerCase();
-  const isFirstScene = /\bscene\s*1\s+of\s+\d+\b/i.test(text);
-  const isContinuation = /\bscene\s*[2-9]\d*\s+of\s+\d+\b/i.test(text) || /continuation|previous scene|last frame/i.test(lower);
+  const isFirstScene = /\bscene\s*1\s+of\s+\d+\b/i.test(text) || /\bsc[eè]ne\s*1\s+sur\s+\d+\b/i.test(text) || /\bsc[eè]ne\s*1\b/i.test(text);
+  const isContinuation = /\bscene\s*[2-9]\d*\s+of\s+\d+\b/i.test(text) || /\bsc[eè]ne\s*[2-9]\d*\s+sur\s+\d+\b/i.test(text) || /continuation|previous scene|last frame|sc[eè]ne pr[eé]c[eé]dente|derni[eè]re frame/i.test(lower);
   const rules = [
     GUARD_MARKER,
+    'REFERENCE IMAGE AUTHORITY LOCK: when an image/reference is supplied, it is the authoritative visual source for identity, composition, camera state, object scale, object state and starting geometry. Do not treat it as inspiration or reinterpret it into a new shot.',
+    'FRAME-0 REPRODUCTION LOCK: the generated video must begin as close as the supplied reference image as the model permits. Preserve the same visible subjects, spatial relationships, camera distance, perspective, horizon, lens impression and relative object scale before motion begins.',
     'CHARACTER COUNT LOCK: preserve exactly the characters explicitly described by the scene prompt and supplied reference image. Do not create, duplicate, clone, mirror, split, merge, replace, or transform any character.',
     'IDENTITY LOCK: every existing character keeps the same face, age, body proportions, hairstyle, clothing, colors, accessories, and distinctive features throughout the shot and from the preceding scene.',
     'HAIR IDENTITY LOCK: hair is a fixed identity feature. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline or recolor the hair unless explicitly requested.',
@@ -25,6 +70,7 @@ function buildGuard(prompt) {
     'GESTURE STYLE LOCK: preserve the established natural movement style. Do not suddenly make gestures faster, broader, more playful, more seductive, more theatrical or more energetic than the previous scene without an explicit cause.',
     'CLOTHING STATE LOCK: preserve the exact established outfit, layering, colors, patterns, sleeves, straps, apron and accessories. Do not reinterpret wardrobe between scenes.',
     'OBJECT IDENTITY LOCK: every important prop must remain the same physical object across adjacent moments. Preserve its shape, color, material, markings, size, orientation and relationship to the subject. Do not make a bowl, cup, spoon, jug, pan or other prop disappear, reappear, duplicate or become a different object.',
+    'OBJECT SCALE LOCK: persistent props must keep the same physical size relative to the character, hands and surrounding geometry. A bowl cannot become larger or smaller merely because the camera changes. Perspective may change gradually with camera motion, but the object itself must not resize or morph.',
     'OBJECT STATE LOCK: preserve the current state of every important prop and substance. Keep fill level, contents, color, texture and consistency stable unless the AUTHORITATIVE SCENE PROMPT explicitly describes and visibly causes a change.',
     'MATERIAL STATE LOCK: do not transform milk, water, juice, oil, batter, dough, sauce, powder, food or other substances into another material simply because the next action is plausible. No spontaneous liquid-to-paste, liquid-to-dough, dough-to-liquid or color/texture change.',
     'ACTION SUBJECT LOCK: only the named subject performs the named action. Keep hands, tools, objects, targets, trajectories, and physical contact consistent with the written instruction.',
@@ -44,7 +90,7 @@ function buildGuard(prompt) {
   if (isContinuation) {
     rules.push(
       'CONTINUATION PERFORMANCE ANCHOR — ABSOLUTE: the previous scene final frame is the authoritative starting performance state. Reproduce the same person, same face, same hair, same wardrobe, same expression intensity, same gaze, same head angle, same posture, same hand/arm positions, same energy and same attention target before continuing the new action.',
-      'CONTINUATION FIRST-MOMENTS HOLD: do not introduce a new smile, facial expression, head tilt, gaze target, posture, gesture style or emotional intensity during the opening moment of the continuation. First inherit; then act.',
+      'CONTINUATION FIRST 1.5-SECOND HOLD: for the first 1.5 seconds, preserve the inherited camera framing, subject scale, body pose, expression intensity, gaze, head angle, wardrobe, persistent props and emotional energy. No new camera move, reframing, zoom, lens change, personality change or expression escalation is allowed during this hold.',
       'CONTINUATION STATE CAUSALITY: if the new scene requires a different emotion or behavior, transition from the inherited state visibly and progressively. Never jump directly from the previous emotional state to the new one.',
       'CONTINUATION OBJECT + PERFORMANCE COUPLING: preserve the physical relationship between the character and persistent props. Hands, arms, bowl, utensil, liquid/preparation and body position must begin in the same relationship established by the previous final frame.',
       'CONTINUATION NO PERSONALITY RESET: do not make the character suddenly more cheerful, seductive, dramatic, surprised, energetic, serious or playful simply because a new scene begins.'
@@ -90,8 +136,12 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
         const originalPrompt = String(body.prompt || '').trim();
         if (originalPrompt && !originalPrompt.includes(GUARD_MARKER)) {
           body.prompt = `${buildGuard(originalPrompt)}\n\nSCENE PROMPT (AUTHORITATIVE):\n${originalPrompt}`;
+          if (!(Number.isSafeInteger(Number(body.seed)) && Number(body.seed) >= 0)) {
+            body.seed = makeReferenceAnchoredSeed(body, originalPrompt);
+            console.log('[PROMPT GUARD] Reference-anchored deterministic seed applied:', body.seed);
+          }
           const nextInit = { ...init, headers, body: JSON.stringify(body) };
-          console.log('[PROMPT GUARD] Performance/state/camera/audio constraints injected for Agnes scene.');
+          console.log('[PROMPT GUARD] Performance/state/camera/audio/reference constraints injected for Agnes scene.');
           return ORIGINAL_FETCH.call(this, input, nextInit);
         }
       }
@@ -102,4 +152,4 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
   return ORIGINAL_FETCH.call(this, input, init);
 };
 
-console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state/performance guard V8 loaded.');
+console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state/performance guard V9 loaded.');
