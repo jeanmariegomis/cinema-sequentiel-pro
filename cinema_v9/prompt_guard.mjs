@@ -12,6 +12,8 @@ function buildGuard(prompt) {
     GUARD_MARKER,
     'CHARACTER COUNT LOCK: preserve exactly the characters explicitly described by the scene prompt and supplied reference image. Do not create, duplicate, clone, mirror, split, merge, replace, or transform any character.',
     'IDENTITY LOCK: every existing character keeps the same face, age, body proportions, hairstyle, clothing, colors, accessories, and distinctive features throughout the shot and from the preceding scene.',
+    'HAIR IDENTITY LOCK: hair is a fixed identity feature. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline or recolor the hair unless explicitly requested.',
+    'PERMANENT SUBJECT LOCK: once a person or animal is established by the reference image and visual bible, keep that same subject present and coherent unless the scene explicitly instructs an exit, departure or intentional removal.',
     'ACTION SUBJECT LOCK: only the named subject performs the named action. Keep hands, tools, objects, targets, trajectories, and physical contact consistent with the written instruction.',
     'DIALOGUE LOCK: no character speaks, lip-syncs, mouths words, or produces dialogue unless dialogue is explicitly written in the scene prompt. Never invent conversations or voices.',
     'NO UNREQUESTED EVENTS: do not add new characters, actions, objects, accidents, reactions, transformations, story events, or dialogue merely because they are visually plausible.',
