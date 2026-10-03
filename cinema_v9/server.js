@@ -1875,31 +1875,52 @@ async function extractLastFrameAsDataUrl(videoUrl, jobId, sceneNumber) {
     const { default: ffmpegInstaller } = await import('@ffmpeg-installer/ffmpeg');
     const { spawn } = await import('child_process');
 
-    await new Promise((resolve, reject) => {
-      const child = spawn(
-        ffmpegInstaller.path,
-        [
-          '-y',
-          '-sseof', '-0.01',
-          '-i', inputPath,
-          '-pix_fmt', 'yuvj420p',
-          '-frames:v', '1',
-          '-q:v', '2',
-          outputPath
-        ],
-        { stdio: ['ignore', 'ignore', 'pipe'] }
-      );
+    async function runLastFrameExtraction(seekFromEnd) {
+      try { fs.unlinkSync(outputPath); } catch (_) {}
 
-      let stderr = '';
-      child.stderr.on('data', chunk => {
-        stderr += chunk.toString();
+      await new Promise((resolve, reject) => {
+        const child = spawn(
+          ffmpegInstaller.path,
+          [
+            '-y',
+            '-sseof', String(seekFromEnd),
+            '-i', inputPath,
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-f', 'image2',
+            outputPath
+          ],
+          { stdio: ['ignore', 'ignore', 'pipe'] }
+        );
+
+        let stderr = '';
+        child.stderr.on('data', chunk => {
+          stderr += chunk.toString();
+        });
+        child.on('error', reject);
+        child.on('close', code => {
+          if (code !== 0) {
+            reject(new Error('FFmpeg dernière frame failed (' + code + '): ' + stderr.slice(-1200)));
+            return;
+          }
+          if (!fs.existsSync(outputPath)) {
+            reject(new Error('FFmpeg terminé sans produire l’image finale (seek=' + seekFromEnd + ')'));
+            return;
+          }
+          resolve();
+        });
       });
-      child.on('error', reject);
-      child.on('close', code => {
-        if (code === 0) resolve();
-        else reject(new Error('FFmpeg dernière frame failed (' + code + '): ' + stderr.slice(-1200)));
-      });
-    });
+    }
+
+    // Some MP4s have a timestamp/index layout for which a seek of only
+    // 10 ms before EOF exits successfully but produces no image. Retry
+    // farther from EOF so continuity never fails on a valid completed video.
+    try {
+      await runLastFrameExtraction('-1');
+    } catch (firstError) {
+      console.warn('[CONTINUITY] Première extraction finale échouée, nouvelle tentative plus large…', firstError.message);
+      await runLastFrameExtraction('-2');
+    }
 
     const jpg = fs.readFileSync(outputPath);
     if (!jpg.length) {
