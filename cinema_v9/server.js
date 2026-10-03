@@ -1992,7 +1992,8 @@ async function extractSceneBoundaryFrames(
   videoUrl,
   jobId,
   sceneNumber,
-  includeLastFrame = true
+  includeLastFrame = true,
+  expectedLastFrameIndex = null
 ) {
   if (!videoUrl) {
     throw new Error('Continuité: URL vidéo absente pour la scène ' + sceneNumber);
@@ -2096,20 +2097,50 @@ async function extractSceneBoundaryFrames(
     );
 
     if (includeLastFrame) {
-      // Capture the frame immediately before the actual end of the MP4.
-      // The previous -sseof -1 seek could land roughly one second before the end,
-      // so continuation could start from the wrong visual state.
-      await runExtraction(
-        [
-          '-sseof', '-0.001',
-          '-i', inputPath,
-          '-frames:v', '1',
-          '-q:v', '2',
-          '-f', 'image2'
-        ],
-        lastFramePath,
-        'dernière frame exacte'
-      );
+      // Capture the exact last video frame by index. The V2 request already
+      // uses a deterministic frame count, so selecting that final index avoids
+      // seeking into an earlier keyframe or into trailing audio duration.
+      const lastIndex =
+        Number.isSafeInteger(Number(expectedLastFrameIndex)) &&
+        Number(expectedLastFrameIndex) >= 0
+          ? Number(expectedLastFrameIndex)
+          : null;
+
+      try {
+        if (lastIndex === null) {
+          throw new Error('Index de dernière frame indisponible');
+        }
+
+        await runExtraction(
+          [
+            '-i', inputPath,
+            '-vf', 'select=eq(n\\,' + lastIndex + ')',
+            '-vsync', 'vfr',
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-f', 'image2'
+          ],
+          lastFramePath,
+          'dernière frame exacte par index'
+        );
+      } catch (exactError) {
+        console.warn(
+          '[CONTINUITY] Extraction exacte de la dernière frame échouée, fallback proche de EOF…',
+          exactError.message
+        );
+
+        await runExtraction(
+          [
+            '-sseof', '-0.08',
+            '-i', inputPath,
+            '-frames:v', '1',
+            '-q:v', '2',
+            '-f', 'image2'
+          ],
+          lastFramePath,
+          'dernière frame (fallback EOF)'
+        );
+      }
     }
 
     const firstJpg = fs.readFileSync(firstFramePath);
@@ -2557,12 +2588,22 @@ async function processJob(job) {
               scene.model || MODEL
             );
 
+          const expectedSceneFrames =
+            getValidLegacyFrames(
+              Number(scene.frames) ||
+              Math.round(
+                Number(scene.seconds || 8) *
+                FRAME_RATE
+              )
+            );
+
           const boundaries =
             await extractSceneBoundaryFrames(
               generatedUrl,
               job.id,
               sceneNumber,
-              sceneIndex < job.scenes.length - 1
+              sceneIndex < job.scenes.length - 1,
+              expectedSceneFrames - 1
             );
 
           if (sceneIndex > 0) {
