@@ -568,14 +568,9 @@ body #generate-btn {
       setTimeout(syncGenerateButton, 500);
     });
 
-    const observer = new MutationObserver(syncGenerateButton);
-    observer.observe(btn.parentElement || document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class','style','disabled']
-    });
-
+    // Do not observe the button's disabled/style attributes here.
+    // syncGenerateButton() itself changes those attributes; observing them
+    // creates a MutationObserver feedback loop that can freeze the UI.
     syncGenerateButton();
     setTimeout(syncGenerateButton, 250);
     setTimeout(syncGenerateButton, 1000);
@@ -604,7 +599,7 @@ body #generate-btn {
 
 
 <header>
-    <h1>Cinéma Séquentiel Pro v13.1.4</h1>
+    <h1>Cinéma Séquentiel Pro v13.1.5</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
     <button id="logout-btn" type="button" style="margin-top:.8rem;padding:.55rem .9rem;border:1px solid #34343f;border-radius:9px;background:#14141a;color:#aaaabd;font-weight:700;cursor:pointer">🔓 Se déconnecter</button>
 </header>
