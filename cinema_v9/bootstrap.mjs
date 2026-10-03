@@ -85,12 +85,20 @@ patchFile(serverPath, source => {
     if (out.includes(oldPoll)) out = out.replace(oldPoll, newPoll);
   }
 
-  // Server.js now owns Agnes phase timing directly. Do not inject legacy
-  // __CSP_* timing variables at runtime: an older bootstrap patch could add
-  // the completion log without adding its declaration, causing
-  // "__CSP_POLL_STARTED_AT__ is not defined" after a successful generation.
-  // __CSP_AGNES_PHASE_TIMING_DISABLED__
+  // Add server-side timing around the actual Agnes create + poll phases.
+  if (!out.includes('// __CSP_AGNES_PHASE_TIMING__')) {
+    const oldCreate = "        if (!scene.videoId) {\n          const sceneInput = {";
+    const newCreate = "        // __CSP_AGNES_PHASE_TIMING__\n        const __CSP_SCENE_STARTED_AT__ = Date.now();\n        if (!scene.videoId) {\n          const __CSP_CREATE_STARTED_AT__ = Date.now();\n          const sceneInput = {";
+    if (out.includes(oldCreate)) out = out.replace(oldCreate, newCreate);
 
+    const oldCreated = "          updateJob(job);\n        }\n\n        scene.videoUrl =\n          await pollVideo(";
+    const newCreated = "          updateJob(job);\n          console.log('[AGNES TIMING] create phase: ' + ((Date.now() - __CSP_CREATE_STARTED_AT__) / 1000).toFixed(1) + 's');\n        } else {\n          console.log('[AGNES TIMING] existing videoId reused; create phase skipped');\n        }\n\n        const __CSP_POLL_STARTED_AT__ = Date.now();\n        scene.videoUrl =\n          await pollVideo(";
+    if (out.includes(oldCreated)) out = out.replace(oldCreated, newCreated);
+
+    const oldDone = "        scene.status =\n          'done';";
+    const newDone = "        console.log('[AGNES TIMING] poll phase: ' + ((Date.now() - __CSP_POLL_STARTED_AT__) / 1000).toFixed(1) + 's');\n        console.log('[AGNES TIMING] total scene: ' + ((Date.now() - __CSP_SCENE_STARTED_AT__) / 1000).toFixed(1) + 's');\n\n        scene.status =\n          'done';";
+    if (out.includes(oldDone)) out = out.replace(oldDone, newDone);
+  }
 
   out = out.replace('const rateLimitRetryDelays = [\n  120000\n];', 'const rateLimitRetryDelays = [];');
 

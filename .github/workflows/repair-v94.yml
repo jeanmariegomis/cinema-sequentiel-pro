@@ -1,0 +1,101 @@
+name: Repair V9.4 API response handling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-v94.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch client and server
+        shell: python
+        run: |
+          from pathlib import Path
+
+          index = Path('cinema_v9/public/index.html')
+          server = Path('cinema_v9/server.js')
+
+          text = index.read_text(encoding='utf-8')
+
+          marker = 'async function startGeneration() {'
+          helper = r'''async function readJsonResponseSafe(res, context = 'serveur') {
+    const raw = await res.text();
+    const body = raw.trim();
+    if (!body) {
+        throw new Error(`${context}: réponse vide du serveur (HTTP ${res.status})`);
+    }
+    try {
+        return JSON.parse(body);
+    } catch (error) {
+        const preview = body.slice(0, 300).replace(/\\s+/g, ' ');
+        throw new Error(`${context}: réponse JSON invalide (HTTP ${res.status})${preview ? ` — ${preview}` : ''}`);
+    }
+}
+'''
+
+          if 'async function readJsonResponseSafe(' not in text:
+              if marker not in text:
+                  raise SystemExit('startGeneration marker not found')
+              text = text.replace(marker, helper + '\n' + marker, 1)
+
+          old = "const data = await res.json();"
+          new = "const data = await readJsonResponseSafe(res, 'Création du job');"
+          if old not in text:
+              raise SystemExit('POST response.json() not found')
+          text = text.replace(old, new, 1)
+
+          old2 = "const job = await res.json();"
+          new2 = "const job = await readJsonResponseSafe(res, 'Lecture du job');"
+          if old2 not in text:
+              raise SystemExit('GET job response.json() not found')
+          text = text.replace(old2, new2, 1)
+
+          index.write_text(text, encoding='utf-8')
+
+          s = server.read_text(encoding='utf-8')
+
+          old_server = '''    // Launch immediately.\n    setImmediate(() => {\n    processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n    });\n});\n\n    return res\n      .status(202)\n      .json({\n\n        id:\n          id,\n\n        status:\n          'queued'\n      });'''
+          new_server = '''    // Send the HTTP response BEFORE starting the worker.\n    // This prevents a heavy/failed worker startup from truncating the JSON response.\n    res.status(202).json({\n      id: id,\n      status: 'queued'\n    });\n\n    // Start the worker only after the response has been handed to Node.\n    setTimeout(() => {\n      processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n      });\n    }, 0);\n\n    return;'''
+          if old_server in s:
+              s = s.replace(old_server, new_server, 1)
+
+          old_worker = '''          const sceneInput = {\n            ...scene,\n            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
+          new_worker = '''          // Preserve each scene's own reference image(s).\n          // Use the shared master reference only when this scene has no image of its own.\n          const sceneInput = {\n            ...scene,\n            images: scene.images?.length\n              ? scene.images\n              : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
+          if old_worker in s:
+              s = s.replace(old_worker, new_worker, 1)
+
+          old_storage = '''              images:\n                hasSharedLegacyReference || suppliedReference\n                  ? []\n                  : images,'''
+          new_storage = '''              // Keep scene-specific references intact.\n              // A shared reference is only a fallback for scenes without their own image.\n              images: images,'''
+          if old_storage in s:
+              s = s.replace(old_storage, new_storage, 1)
+
+          server.write_text(s, encoding='utf-8')
+
+      - name: Verify patches
+        run: |
+          grep -n "readJsonResponseSafe" cinema_v9/public/index.html
+          grep -n "Send the HTTP response" cinema_v9/server.js
+          grep -n "Preserve each scene's own reference" cinema_v9/server.js
+          grep -n "Keep scene-specific references intact" cinema_v9/server.js
+
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cinema_v9/public/index.html cinema_v9/server.js
+          if git diff --cached --quiet; then
+            echo "No changes needed."
+          else
+            git commit -m "fix: preserve scene-specific video references"
+            git push
+          fi

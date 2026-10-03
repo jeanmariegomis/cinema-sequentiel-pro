@@ -408,12 +408,6 @@ const DATA_DIR =
     'data'
   );
 
-const CONTINUITY_FRAME_DIR =
-  path.join(
-    DATA_DIR,
-    'continuity_frames'
-  );
-
 const JOBS_FILE =
   path.join(
     DATA_DIR,
@@ -423,17 +417,6 @@ const JOBS_FILE =
 const MAX_VIDEO_SECONDS = 12;
 const AGNES_REQUEST_TIMEOUT_MS = 45000;
 const AGNES_POLL_TIMEOUT_MS = 30000;
-
-// Deep V2.0 continuity validation.
-// Agnes V2.0 exposes img2video through a single top-level image. Keep that
-// temporal reference, but verify frame 0 of every later scene against the
-// previous scene's final frame before accepting it. Rejected continuations
-// are regenerated internally; client progress semantics remain unchanged.
-const MAX_CONTINUITY_RETRIES = 2;
-const MAX_VIDEO_INTEGRITY_RETRIES = 2;
-const CONTINUITY_START_MAX_MAE = 0.14;
-const CONTINUITY_RETRY_SEED_SALT = 'CSP-V2-CONTINUITY-RETRY';
-
 // Agnes free queue: process one server job at a time by default.
 const MAX_CONCURRENT_JOBS = Math.max(
   1,
@@ -444,13 +427,6 @@ const MAX_STORED_JOBS = 100;
 
 fs.mkdirSync(
   DATA_DIR,
-  {
-    recursive: true
-  }
-);
-
-fs.mkdirSync(
-  CONTINUITY_FRAME_DIR,
   {
     recursive: true
   }
@@ -800,12 +776,6 @@ function safeJob(job) {
           model:
             s.model || null,
 
-          referenceType:
-            s.referenceType || null,
-
-          referenceReadyForNext:
-            Boolean(s.referenceReadyForNext),
-
           error:
             s.error || null
         })
@@ -826,54 +796,6 @@ async function sleep(ms) {
         ms
       )
   );
-}
-
-async function validateGeneratedVideoIntegrity(inputPath) {
-  const { default: ffmpegInstaller } =
-    await import('@ffmpeg-installer/ffmpeg');
-  const { spawn } = await import('child_process');
-
-  await new Promise((resolve, reject) => {
-    const child = spawn(
-      ffmpegInstaller.path,
-      [
-        '-v', 'error',
-        '-i', inputPath,
-        '-map', '0:v:0',
-        '-f', 'null',
-        '-'
-      ],
-      { stdio: ['ignore', 'ignore', 'pipe'] }
-    );
-
-    let stderr = '';
-
-    child.stderr.on('data', chunk => {
-      stderr += chunk.toString();
-    });
-
-    child.on('error', reject);
-
-    child.on('close', code => {
-      if (code !== 0) {
-        reject(
-          new Error(
-            'VIDEO_INTEGRITY: FFmpeg ne peut pas décoder entièrement la piste vidéo (' +
-            code +
-            '): ' +
-            stderr.slice(-1600)
-          )
-        );
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
-function isGeneratedVideoIntegrityError(message) {
-  return String(message || '').includes('VIDEO_INTEGRITY:');
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -997,46 +919,7 @@ function fingerprintImage(value) {
     .digest('hex');
 }
 
-
-function makeProjectSeed(referenceImage, visualBible) {
-  const material = JSON.stringify({
-    purpose: 'cinema-sequentiel-pro-v2-project-seed',
-    reference: fingerprintImage(referenceImage),
-    visualBible: normalizeSeedPrompt(visualBible || '')
-  });
-
-  const digest = crypto
-    .createHash('sha256')
-    .update(material, 'utf8')
-    .digest();
-
-  return digest.readUInt32BE(0);
-}
-
-function makeProjectAudioSignature(projectSeed, visualBible) {
-  const material = JSON.stringify({
-    purpose: 'cinema-sequentiel-pro-v2-audio-identity',
-    projectSeed: projectSeed ?? null,
-    visualBible: normalizeSeedPrompt(visualBible || '')
-  });
-
-  return crypto
-    .createHash('sha256')
-    .update(material, 'utf8')
-    .digest('hex')
-    .slice(0, 16);
-}
-
-function makeDeterministicSeed(
-  scene,
-  prompt,
-  images,
-  mode,
-  dimensions,
-  validFrames,
-  projectSeed = null,
-  continuityRetry = 0
-) {
+function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFrames) {
   if (!AGNES_DETERMINISTIC_SEED) {
     return null;
   }
@@ -1046,49 +929,11 @@ function makeDeterministicSeed(
     return {
       seed: explicitSeed,
       promptHash: null,
-      imageHashes: [],
-      scope: 'explicit'
+      imageHashes: []
     };
   }
 
   const normalizedPrompt = normalizeSeedPrompt(prompt);
-
-  if (
-    Number.isSafeInteger(Number(projectSeed)) &&
-    Number(projectSeed) >= 0 &&
-    continuityRetry === 0
-  ) {
-    const sequenceIndex =
-      Number.isInteger(Number(scene.sequenceIndex))
-        ? Number(scene.sequenceIndex)
-        : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
-
-    const sceneSeedMaterial = JSON.stringify({
-      projectSeed: Number(projectSeed),
-      sequenceIndex,
-      prompt: normalizedPrompt
-    });
-
-    const sceneSeed = crypto
-      .createHash('sha256')
-      .update(sceneSeedMaterial, 'utf8')
-      .digest()
-      .readUInt32BE(0);
-
-    return {
-      seed: sceneSeed,
-      promptHash: crypto
-        .createHash('sha256')
-        .update(normalizedPrompt, 'utf8')
-        .digest('hex')
-        .slice(0, 16),
-      imageHashes: images
-        .map(fingerprintImage)
-        .filter(Boolean)
-        .map(hash => hash.slice(0, 16)),
-      scope: 'project-scene'
-    };
-  }
   const imageFingerprints = images
     .map(fingerprintImage)
     .filter(Boolean);
@@ -1100,16 +945,7 @@ function makeDeterministicSeed(
     width: dimensions.width,
     height: dimensions.height,
     frames: validFrames,
-    frame_rate: FRAME_RATE,
-    projectSeed:
-      Number.isSafeInteger(Number(projectSeed))
-        ? Number(projectSeed)
-        : null,
-    continuityRetry: Number(continuityRetry) || 0,
-    retrySalt:
-      continuityRetry > 0
-        ? CONTINUITY_RETRY_SEED_SALT
-        : ''
+    frame_rate: FRAME_RATE
   });
 
   const seedDigest = crypto
@@ -1124,132 +960,17 @@ function makeDeterministicSeed(
       .update(normalizedPrompt, 'utf8')
       .digest('hex')
       .slice(0, 16),
-    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16)),
-    scope: continuityRetry > 0 ? 'continuity-retry' : 'scene'
+    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16))
   };
 }
 
-function extractSceneStoryText(prompt = '') {
-  const text = String(prompt || '');
-  const match = text.match(
-    /SCENE\\s+\\d+\\s+OF\\s+\\d+\\s*:\\s*([\\s\\S]*?)(?:\\nLANGUAGE ENFORCEMENT FOR THIS SCENE:|\\nCONTINUITY:|$)/i
-  );
-  return match
-    ? match[1].trim()
-    : text.trim();
-}
-
-function sceneRequestsMusic(prompt = '') {
-  const storyText = extractSceneStoryText(prompt);
-  return /(?:\\bmusique\\b|\\bmusic\\b|\\bscore\\b|\\binstrumental\\b|\\bsoundtrack\\b|\\bbande sonore\\b|\\bchanson\\b|\\bsong\\b|\\bbackground music\\b|\\bmusique de fond\\b|\\bmusi[cq]al)/i.test(
-    storyText
-  );
-}
-
-function buildProjectAudioContinuityPrompt(
-  audioSignature = '',
-  prompt = ''
-) {
-  const signature = String(audioSignature || '').trim();
-
-  if (sceneRequestsMusic(prompt)) {
-    return [
-      'PROJECT AUDIO POLICY: music is explicitly requested for this scene.',
-      'Keep the requested music coherent with the project audio identity when possible.',
-      signature
-        ? 'PROJECT AUDIO SIGNATURE: ' + signature
-        : 'PROJECT AUDIO SIGNATURE: explicit-scene-music'
-    ].join('\\n');
-  }
-
+function buildConsistencyPrompt(prompt) {
   return [
-    'PROJECT AUDIO POLICY: NO BACKGROUND MUSIC BY DEFAULT.',
-    'Preserve scripted dialogue exactly as written and keep natural diegetic sounds that belong to the visible action.',
-    'Do not invent, add, continue, restart or fade in instrumental music, background score, soundtrack, song, singing or non-diegetic musical beds.',
-    'AUDIO PRIORITY: scripted dialogue first; then natural action/room/animal sounds when appropriate; silence is preferable to invented music.',
-    signature
-      ? 'PROJECT AUDIO SIGNATURE: applies to dialogue/voice identity and natural sound character, NOT to background music.'
-      : 'PROJECT AUDIO SIGNATURE: stable-default; no background music.'
-  ].join('\\n');
-}
-
-function buildActionIntegrityPrompt(prompt) {
-  const text = String(prompt || '').trim();
-  const lower = text.toLowerCase();
-  const rules = [
-    'ACTION INTEGRITY LOCK: execute the exact action described in the scene prompt and nothing else. Identify the acting subject, the manipulated object, the intended target, the contact point, and the direction of movement before animating. The hands, tools, objects, liquid, and body must remain physically connected to the intended action.',
-    'The action must have a clear cause-and-effect sequence: the subject visibly holds or contacts the correct object, moves it toward the exact target named in the prompt, performs the requested action on that target, and keeps the movement aligned with that target for the entire action. Never redirect the action toward the table, floor, empty space, another object, or another person unless explicitly requested.',
-    'OBJECT AND TARGET LOCK: preserve the identity, position, size, orientation, and physical relationship of important props. Do not swap objects, duplicate objects, move an object to an unintended location, or invent a different target. Maintain believable contact, gravity, collision, trajectory, and hand placement.',
-    'If the prompt describes pouring, the container must remain directly above the named receiving container or target, the liquid stream must stay continuously inside that target, and the liquid must never spill onto the table, countertop, floor, clothing, or surrounding area unless the prompt explicitly requests a spill.',
-    'If the prompt describes mixing, stirring, whisking, cutting, opening, closing, taking, placing, giving, receiving, picking up, putting down, or looking at something, the subject must visibly interact with the exact named object or target and complete the described action. Do not substitute another object or target.',
-    'Do not introduce an unintended action merely because it is visually plausible. The written scene instruction has priority over generic animation habits.'
-  ];
-  if (/(vers|pour|lait|liquide|boisson|eau|jus)/i.test(lower)) {
-    rules.push('POURING SAFETY LOCK: if liquid is being poured, show the receiving bowl, cup, glass, pan, or other named container clearly under the pouring stream before the stream begins. Keep the stream centered over the receiving container until pouring ends. ZERO liquid on the table or countertop.');
-  }
-  if (/(m[ée]lange|remue|remuer|fouet|touille|touiller|stir|mix)/i.test(lower)) {
-    rules.push('MIXING LOCK: keep the utensil visibly inside the named bowl, pan, or container during mixing. The utensil must not drift onto the table or into empty space.');
-  }
-  return rules.join('\n');
-}
-
-function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
-  const bible = String(visualBible || '').trim();
-  const lockedBible = bible
-    ? 'SERVER-LOCKED VISUAL BIBLE — SAME IDENTITY/ENVIRONMENT RULES FOR EVERY SCENE:\n' + bible
-    : 'SERVER-LOCKED VISUAL BIBLE: none supplied; rely on the supplied reference image and scene prompt.';
-
-  return [
-    'SCENE STATE LOCK: treat the supplied reference image and established scene state as authoritative. Do not reinterpret, replace, morph, duplicate, remove or reset persistent people, animals, props, materials or spatial relationships unless the written scene explicitly requires that change.',
-    'OBJECT STATE LOCK: every important object has identity plus state. Preserve object type, shape, color, material, size, orientation, markings, fill level, contents, texture, temperature/physical form when visually inferable, and relationship to the subject. An object cannot disappear and reappear as a different object between adjacent moments.',
-    'MATERIAL CONSISTENCY LOCK: substances retain their visual identity and physical state until an explicit transformation is performed. Never turn a liquid into a solid, paste, dough, batter, sauce or powder without a visible requested action causing that transformation.',
-    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot and across the entire sequence.',
-    'FACIAL IDENTITY LOCK: preserve exact face shape, facial proportions, eye shape/color, eyebrows, eyelids, nose, lips, jawline, freckles, skin tone, age and distinctive facial features. Never redraw, beautify or replace the character with a different person.',
-    'HAIR IDENTITY LOCK: hairstyle is a fixed biometric identifier. Preserve exact hairline, parting, length, curl/wave pattern, curl size, density, volume, silhouette, color, highlights, texture and distinctive loose strands. Never shorten, lengthen, straighten, tighten curls, change the part, change the hairline, recolor the hair or alter the silhouette unless explicitly requested.',
-    'BODY AND CLOTHING LOCK: preserve exact body proportions, shoulder width, silhouette, age, clothing, colors, accessories and distinctive physical details. Never make the character suddenly muscular, extremely thin, younger, older or differently proportioned.',
-    'ENVIRONMENT LOCK: preserve exact architecture, important props, spatial layout, time of day, lighting direction, color palette and visual style established by the reference and visual bible unless explicitly changed.',
-    'ANIMAL LOCK: if an animal is present, preserve exact species, face, fur/feather pattern, colors, eyes, ears, size, body proportions and silhouette. Never clone, duplicate or replace it.',
-    'PERMANENT CHARACTER PRESENCE LOCK: once a character or animal is established by the master reference/visual bible, keep it present and visually coherent unless the scene explicitly says it exits, leaves the frame, or is intentionally removed.',
-    'CAMERA CONTINUITY LOCK: each scene is ONE continuous take unless the scene prompt explicitly requires a cut. Never make an instantaneous angle change, jump cut, snap zoom, sudden focal-length jump, teleporting viewpoint, mirrored viewpoint or abrupt recomposition. Camera motion must accelerate, turn, pan, tilt, dolly or zoom progressively from the existing camera state.',
-    'CAMERA MOVEMENT INTEGRITY: when the prompt asks for multiple camera directions, connect them with one physically continuous camera path. Never satisfy a later camera instruction by abruptly replacing the composition with a new shot.',
-    'PERFORMANCE IDENTITY LOCK: preserve the established character’s baseline temperament, social attitude, energy, gaze behavior, gesture style and emotional realism across the sequence. Do not automatically turn a calm/focused character into a smiling, flirtatious, excited, angry or theatrical version unless the scene explicitly requests that emotional change.',
-    'EXPRESSION CONTINUITY LOCK: facial expressions must evolve gradually from the previous visible emotional state. No unexplained smile, smirk, surprise, exaggerated reaction, personality switch or emotional reset.',
-    'REALISTIC CINEMATIC MOTION: use natural anatomy, believable weight/inertia, realistic hands and facial motion, natural eye focus/blinking, coherent shadows/reflections, cinematic depth of field and restrained camera movement.',
-    'The supplied reference image defines identity, appearance, object states and starting composition. The scene prompt defines the intended action and any explicit state changes. Camera instructions must be realized as continuous motion, not as shot replacement. Animate the existing scene instead of inventing a replacement.',
-    lockedBible,
-    buildProjectAudioContinuityPrompt(audioSignature, prompt),
-    'AUDIO PRESENCE POLICY: scripted dialogue is preserved. Natural diegetic sound from the visible action may be present. Background music is OFF unless this scene explicitly requests music.',
-    'AUDIO CONTINUITY LOCK: keep the same character voice identity across scenes when dialogue is scripted. Do not introduce unrelated voices, narration, singing or vocal improvisation.',
-    buildActionIntegrityPrompt(prompt),
+    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot. Keep the same face, facial proportions, hairstyle, hairline, skin tone, age, body proportions, clothing, colors, accessories, and distinctive features from the reference image. Do not redesign, beautify, age, de-age, slim, enlarge muscles, or replace the character.',
+    'Preserve the same environment, architecture, important objects, spatial layout, time of day, lighting direction, color palette, and visual style established by the reference and visual bible unless the prompt explicitly requests a change.',
+    'REALISTIC CINEMATIC MOTION: natural human anatomy, realistic skin texture, physically plausible movement, believable weight and inertia, realistic hands and facial motion, natural eye focus and blinking, coherent shadows and reflections, photographic lighting, cinematic depth of field, subtle camera movement. Keep motion continuous from the first frame to the last frame; no sudden resets or scene changes.',
+    'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
     'SCENE INSTRUCTIONS:\n' + prompt
-  ].join('\n\n');
-}
-
-function buildContinuationPrompt(
-  prompt,
-  visualBible = '',
-  audioSignature = '',
-  previousScenePrompt = ''
-) {
-  const previousState = normalizeSeedPrompt(previousScenePrompt || '').slice(0, 7000);
-
-  return [
-    'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot, not as inspiration or a loose reference.',
-    'FIRST 1.0 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props, lighting and emotional state visually stable before introducing substantial motion.',
-    'DO NOT RESET OR RECOMPOSE: do not restart from the master reference image, do not redesign the character, do not move the character to a new location, and do not replace the supplied starting frame with a newly invented opening.',
-    'HAIR AND FACE MUST MATCH THE SUPPLIED FRAME: hair length, curl pattern, hairline, volume, color, face shape, eyes and all visible identity details must remain unchanged while the new action begins.',
-    'PERSONALITY MUST CARRY FORWARD: begin with the same temperament, gaze, facial attitude, body language and level of energy visible at the end of the previous scene. Any emotional change must have a visible cause in the new scene action.',
-    'CAMERA MUST CARRY FORWARD: continue from the previous frame’s composition with one smooth camera path. No internal cut, jump in angle, snap zoom, sudden lens change, mirrored view or instant reframing. Any later camera movement must start gradually from this established state.',
-    'OBJECT STATE MUST CARRY FORWARD: every persistent prop keeps its exact identity, material, color, shape, size, position relationship and physical state from the previous final frame. A bowl remains the same bowl. Its contents remain the same substance, color, approximate amount and consistency unless the new scene explicitly performs and visibly completes a state change.',
-    'LIQUID/PREPARATION STATE LOCK: never transform milk, water, juice, oil, batter, dough, sauce, powder, food or any other material into a different substance merely because the next action is plausible. A state change is allowed only when explicitly requested and must happen through a visible, continuous physical action.',
-    'PREVIOUS SCENE STATE IS AUTHORITATIVE: the previous scene prompt below is a state-history reference. Carry forward all established people, animals, props and material states that are not explicitly changed by the new scene. The current scene prompt may add an action, but it may not silently rewrite established state.',
-    previousState
-      ? 'PREVIOUS SCENE STATE HISTORY (AUTHORITATIVE FOR PERSISTENT STATE):\n' + previousState
-      : 'PREVIOUS SCENE STATE HISTORY: unavailable; rely strictly on the supplied final-frame image.',
-    'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible and state history are permanent continuity constraints.',
-    'CONTINUITY COMPOSITION LOCK: during the first 1.0 second, do not zoom, crop, reframe, cut, rotate, mirror, change camera height, or change focal relationship. The first generated frames must remain visually close to the supplied previous final frame.',
-    'PERSISTENT SUBJECT LOCK: every established permanent character or animal visible in the previous final frame remains present unless the scene explicitly instructs an exit. Do not silently remove the cat, replace the woman, or invent a new subject.',
-    buildConsistencyPrompt(prompt, visualBible, audioSignature)
   ].join('\n\n');
 }
 
@@ -1446,11 +1167,7 @@ async function createVideoTask(
       images,
       mode,
       dimensions,
-      validFrames,
-      Number.isSafeInteger(Number(scene.projectSeed))
-        ? Number(scene.projectSeed)
-        : null,
-      Number(scene.continuityRetry) || 0
+      validFrames
     );
 
   const deterministicSeed =
@@ -1458,25 +1175,8 @@ async function createVideoTask(
       ? null
       : seedInfo.seed;
 
-  const sequenceIndex = Number.isInteger(Number(scene.sequenceIndex))
-    ? Number(scene.sequenceIndex)
-    : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
-
-  const visualBible = String(scene.visualBible || '').trim();
-  const audioSignature = String(scene.audioSignature || '').trim();
-
-  const previousScenePrompt =
-    String(scene.previousScenePrompt || '').trim();
-
   const continuityPrompt =
-    sequenceIndex > 0
-      ? buildContinuationPrompt(
-          prompt,
-          visualBible,
-          audioSignature,
-          previousScenePrompt
-        )
-      : buildConsistencyPrompt(prompt, visualBible, audioSignature);
+    buildConsistencyPrompt(prompt);
 
   const primaryBody = {
 
@@ -1502,7 +1202,8 @@ async function createVideoTask(
       : {}),
 
     negative_prompt:
-      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra person, duplicate animal, extra animal, second cat, cloned cat, unrequested talking animal, animal lip-sync without scripted dialogue, unrequested human voice, unrequested narration, unrequested speech, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, hair length change, hairline change, curl pattern change, hair silhouette change, skin tone change, clothing change, prop disappearance, prop duplication, object morphing, object replacement, material morphing, liquid-to-solid morph, milk-to-dough morph, bowl disappearance, target disappearance, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'  };
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'
+  };
 
   if (mode === 'keyframe') {
     const keyframeImages = [
@@ -1870,9 +1571,6 @@ async function pollVideo(
   const basePollDelay =
     2000;
 
-  const nearCompletionPollDelay =
-    1000;
-
   let lastProgress = null;
   let unchangedProgressPolls = 0;
   let rateLimitCount = 0;
@@ -1880,10 +1578,6 @@ async function pollVideo(
   function getAdaptivePollDelay(progress) {
     if (progress == null) {
       return basePollDelay;
-    }
-
-    if (Number(progress) >= 90) {
-      return nearCompletionPollDelay;
     }
 
     if (lastProgress === progress) {
@@ -2110,443 +1804,6 @@ return videoUrl;
   );
 }
 
-// __CSP_AUTO_CONTINUITY_V2__
-// Native scene-to-scene continuity. This logic is intentionally inside
-// server.js so deployment cannot silently skip a runtime source patch.
-async function extractSceneBoundaryFrames(
-  videoUrl,
-  jobId,
-  sceneNumber,
-  includeLastFrame = true,
-  expectedLastFrameIndex = null
-) {
-  if (!videoUrl) {
-    throw new Error('Continuité: URL vidéo absente pour la scène ' + sceneNumber);
-  }
-
-  const tempId = crypto.randomUUID();
-  const inputPath = path.join(DATA_DIR, '__csp_video_' + tempId + '.mp4');
-  const firstFramePath = path.join(DATA_DIR, '__csp_first_' + tempId + '.jpg');
-  const lastFramePath = path.join(DATA_DIR, '__csp_last_' + tempId + '.jpg');
-  const persistentPath = path.join(
-    CONTINUITY_FRAME_DIR,
-    String(jobId) + '_scene_' + String(sceneNumber) + '.jpg'
-  );
-
-  try {
-    console.log(
-      '[CONTINUITY] Téléchargement scène ' +
-      sceneNumber +
-      ' pour vérifier ses frames de frontière…'
-    );
-
-    const response = await fetchWithTimeout(
-      videoUrl,
-      {},
-      AGNES_REQUEST_TIMEOUT_MS
-    );
-
-    if (!response.ok) {
-      throw new Error('Téléchargement vidéo HTTP ' + response.status);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length) {
-      throw new Error('Vidéo terminée mais vide');
-    }
-
-    fs.writeFileSync(inputPath, buffer);
-
-    console.log(
-      '[VIDEO INTEGRITY] Vérification complète du décodage vidéo avant extraction des frames…'
-    );
-
-    await validateGeneratedVideoIntegrity(inputPath);
-
-    console.log(
-      '[VIDEO INTEGRITY] Décodage vidéo validé.'
-    );
-
-    const { default: ffmpegInstaller } =
-      await import('@ffmpeg-installer/ffmpeg');
-    const { spawn } = await import('child_process');
-
-    async function runExtraction(args, outputPath, label) {
-      try { fs.unlinkSync(outputPath); } catch (_) {}
-
-      await new Promise((resolve, reject) => {
-        const child = spawn(
-          ffmpegInstaller.path,
-          ['-y', ...args, outputPath],
-          { stdio: ['ignore', 'ignore', 'pipe'] }
-        );
-
-        let stderr = '';
-
-        child.stderr.on('data', chunk => {
-          stderr += chunk.toString();
-        });
-
-        child.on('error', reject);
-
-        child.on('close', code => {
-          if (code !== 0) {
-            reject(
-              new Error(
-                'FFmpeg ' +
-                  label +
-                  ' failed (' +
-                  code +
-                  '): ' +
-                  stderr.slice(-1200)
-              )
-            );
-            return;
-          }
-
-          if (!fs.existsSync(outputPath)) {
-            reject(
-              new Error(
-                'FFmpeg ' +
-                  label +
-                  ' terminé sans produire l’image.'
-              )
-            );
-            return;
-          }
-
-          resolve();
-        });
-      });
-    }
-
-    await runExtraction(
-      [
-        '-i', inputPath,
-        '-frames:v', '1',
-        '-q:v', '2',
-        '-f', 'image2'
-      ],
-      firstFramePath,
-      'première frame'
-    );
-
-    if (includeLastFrame) {
-      // Capture the exact last video frame by index. The V2 request already
-      // uses a deterministic frame count, so selecting that final index avoids
-      // seeking into an earlier keyframe or into trailing audio duration.
-      const lastIndex =
-        Number.isSafeInteger(Number(expectedLastFrameIndex)) &&
-        Number(expectedLastFrameIndex) >= 0
-          ? Number(expectedLastFrameIndex)
-          : null;
-
-      try {
-        if (lastIndex === null) {
-          throw new Error('Index de dernière frame indisponible');
-        }
-
-        await runExtraction(
-          [
-            '-i', inputPath,
-            '-vf', 'select=eq(n\\,' + lastIndex + ')',
-            '-vsync', 'vfr',
-            '-frames:v', '1',
-            '-q:v', '2',
-            '-f', 'image2'
-          ],
-          lastFramePath,
-          'dernière frame exacte par index'
-        );
-      } catch (exactError) {
-        console.warn(
-          '[CONTINUITY] Extraction exacte de la dernière frame échouée, fallback proche de EOF…',
-          exactError.message
-        );
-
-        await runExtraction(
-          [
-            '-sseof', '-0.08',
-            '-i', inputPath,
-            '-frames:v', '1',
-            '-q:v', '2',
-            '-f', 'image2'
-          ],
-          lastFramePath,
-          'dernière frame (fallback EOF)'
-        );
-      }
-    }
-
-    const firstJpg = fs.readFileSync(firstFramePath);
-    const lastJpg = includeLastFrame
-      ? fs.readFileSync(lastFramePath)
-      : null;
-
-    if (!firstJpg.length) {
-      throw new Error('Première image vidéo vide');
-    }
-
-    if (includeLastFrame) {
-      if (!lastJpg?.length) {
-        throw new Error('Image finale vide');
-      }
-
-      fs.writeFileSync(persistentPath, lastJpg);
-    }
-
-    const firstHash = crypto
-      .createHash('sha256')
-      .update(firstJpg)
-      .digest('hex');
-
-    const lastHash = lastJpg
-      ? crypto.createHash('sha256').update(lastJpg).digest('hex')
-      : '';
-
-    console.log(
-      '[CONTINUITY] Scène ' +
-      sceneNumber +
-      ' → frame initiale capturée (' +
-      Math.round(firstJpg.length / 1024) +
-      ' KB, sha256=' +
-      firstHash.slice(0, 16) +
-      '…)'
-    );
-
-    if (includeLastFrame) {
-      console.log(
-        '[CONTINUITY] Scène ' +
-        sceneNumber +
-        ' → dernière image capturée (' +
-        Math.round(lastJpg.length / 1024) +
-        ' KB, sha256=' +
-        lastHash.slice(0, 16) +
-        '…)'
-      );
-    }
-
-    return {
-      firstDataUrl:
-        'data:image/jpeg;base64,' +
-        firstJpg.toString('base64'),
-      firstHash,
-      lastDataUrl: lastJpg
-        ? 'data:image/jpeg;base64,' + lastJpg.toString('base64')
-        : null,
-      lastHash,
-      filePath: includeLastFrame ? persistentPath : null
-    };
-  } finally {
-    for (const file of [
-      inputPath,
-      firstFramePath,
-      lastFramePath
-    ]) {
-      try { fs.unlinkSync(file); } catch (_) {}
-    }
-  }
-}
-
-async function decodeImageToRgbThumbnail(dataUrl, tempId, label) {
-  const match = String(dataUrl || '').match(
-    /^data:[^;,]+(?:;[^,]*)?;base64,(.+)$/is
-  );
-
-  if (!match) {
-    throw new Error('Image de continuité invalide pour ' + label);
-  }
-
-  const inputPath = path.join(
-    DATA_DIR,
-    '__csp_compare_' + tempId + '_' + label + '.jpg'
-  );
-
-  const size = 96;
-  const expectedBytes = size * size * 3;
-
-  try {
-    fs.writeFileSync(
-      inputPath,
-      Buffer.from(match[1], 'base64')
-    );
-
-    const { default: ffmpegInstaller } =
-      await import('@ffmpeg-installer/ffmpeg');
-    const { spawn } = await import('child_process');
-
-    return await new Promise((resolve, reject) => {
-      const child = spawn(
-        ffmpegInstaller.path,
-        [
-          '-v', 'error',
-          '-i', inputPath,
-          '-vf',
-          'scale=96:96:force_original_aspect_ratio=decrease,pad=96:96:(ow-iw)/2:(oh-ih)/2:color=black',
-          '-frames:v', '1',
-          '-f', 'rawvideo',
-          '-pix_fmt', 'rgb24',
-          'pipe:1'
-        ],
-        { stdio: ['ignore', 'pipe', 'pipe'] }
-      );
-
-      const chunks = [];
-      let stderr = '';
-
-      child.stdout.on('data', chunk => chunks.push(chunk));
-      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
-      child.on('error', reject);
-
-      child.on('close', code => {
-        if (code !== 0) {
-          reject(
-            new Error(
-              'FFmpeg comparaison ' +
-                label +
-                ' failed (' +
-                code +
-                '): ' +
-                stderr.slice(-800)
-            )
-          );
-          return;
-        }
-
-        const bytes = Buffer.concat(chunks);
-
-        if (bytes.length < expectedBytes) {
-          reject(
-            new Error(
-              'FFmpeg comparaison ' +
-                label +
-                ' n’a pas produit assez de pixels.'
-            )
-          );
-          return;
-        }
-
-        resolve(bytes.subarray(0, expectedBytes));
-      });
-    });
-  } finally {
-    try { fs.unlinkSync(inputPath); } catch (_) {}
-  }
-}
-
-function makePerceptualHashRgb(rgb, size = 96, grid = 16) {
-  const values = new Float64Array(grid * grid);
-  let sum = 0;
-
-  for (let gy = 0; gy < grid; gy++) {
-    const yStart = Math.floor(gy * size / grid);
-    const yEnd = Math.max(yStart + 1, Math.floor((gy + 1) * size / grid));
-
-    for (let gx = 0; gx < grid; gx++) {
-      const xStart = Math.floor(gx * size / grid);
-      const xEnd = Math.max(xStart + 1, Math.floor((gx + 1) * size / grid));
-
-      let total = 0;
-      let count = 0;
-
-      for (let y = yStart; y < yEnd; y++) {
-        for (let x = xStart; x < xEnd; x++) {
-          const idx = (y * size + x) * 3;
-          const r = rgb[idx];
-          const g = rgb[idx + 1];
-          const b = rgb[idx + 2];
-          total += 0.299 * r + 0.587 * g + 0.114 * b;
-          count++;
-        }
-      }
-
-      const value = count ? total / count : 0;
-      values[gy * grid + gx] = value;
-      sum += value;
-    }
-  }
-
-  const mean = sum / values.length;
-  const bits = new Uint8Array(values.length);
-
-  for (let i = 0; i < values.length; i++) {
-    bits[i] = values[i] >= mean ? 1 : 0;
-  }
-
-  return bits;
-}
-
-function hammingDistance(a, b) {
-  const length = Math.min(a.length, b.length);
-  let different = 0;
-
-  for (let i = 0; i < length; i++) {
-    if (a[i] !== b[i]) different++;
-  }
-
-  return length ? different / length : 1;
-}
-
-async function compareContinuityFrames(expectedDataUrl, actualDataUrl) {
-  const tempId = crypto.randomUUID();
-
-  const expected =
-    await decodeImageToRgbThumbnail(
-      expectedDataUrl,
-      tempId,
-      'expected'
-    );
-
-  const actual =
-    await decodeImageToRgbThumbnail(
-      actualDataUrl,
-      tempId,
-      'actual'
-    );
-
-  let absoluteError = 0;
-
-  for (let i = 0; i < expected.length; i++) {
-    absoluteError += Math.abs(
-      expected[i] - actual[i]
-    );
-  }
-
-  const rgbMae =
-    absoluteError /
-    (expected.length * 255);
-
-  const hashDistance =
-    hammingDistance(
-      makePerceptualHashRgb(expected),
-      makePerceptualHashRgb(actual)
-    );
-
-  return {
-    ok:
-      rgbMae <= 0.12 &&
-      hashDistance <= 0.18,
-    mae: rgbMae,
-    rgbMae,
-    hashDistance
-  };
-}
-
-function restorePersistedContinuityFrame(scene) {
-  if (scene?.last_frame) return scene.last_frame;
-
-  const filePath = String(scene?.last_frame_path || '');
-  if (!filePath) return null;
-
-  try {
-    const jpg = fs.readFileSync(filePath);
-    if (!jpg.length) return null;
-    return 'data:image/jpeg;base64,' + jpg.toString('base64');
-  } catch (_) {
-    return null;
-  }
-}
-
 // ============================================================
 // JOB WORKER
 // ============================================================
@@ -2561,336 +1818,53 @@ function updateJob(job) {
 async function processJob(job) {
   try {
 
-    job.status = 'processing';
+    job.status =
+      'processing';
+
     updateJob(job);
 
-    for (const scene of job.scenes) {
+    for (
+      const scene of job.scenes
+    ) {
 
-      if (scene.status === 'done') {
+      if (
+        scene.status === 'done'
+      ) {
         continue;
       }
 
-      if (job.status === 'cancelled') {
+      if (
+        job.status ===
+        'cancelled'
+      ) {
         break;
       }
 
-      scene.status = 'processing';
+      scene.status =
+        'processing';
+
       updateJob(job);
 
       try {
 
-        const sceneIndex = job.scenes.indexOf(scene);
-        const sceneNumber = sceneIndex + 1;
-        const previousScene =
-          sceneIndex > 0
-            ? job.scenes[sceneIndex - 1]
-            : null;
+        if (!scene.videoId) {
+          const sceneInput = {
+            ...scene,
+            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
+          };
+          const created = await createVideoTask(sceneInput, { get: () => '' });
+          scene.videoId = created.videoId;
+          scene.model = created.model;
+          updateJob(job);        }
 
-        let continuityRetry =
-          Number(scene.continuityRetry || 0);
-
-        let accepted = false;
-        let continuityImage = null;
-
-        if (sceneIndex > 0) {
-          continuityImage =
-            restorePersistedContinuityFrame(
-              previousScene
-            );
-
-          if (!continuityImage) {
-            throw new Error(
-              'Continuité impossible : la dernière image de la scène ' +
-              sceneIndex +
-              ' est introuvable. Aucun fallback vers l’image maître n’est autorisé.'
-            );
-          }
-        }
-
-        while (!accepted) {
-
-          if (job.status === 'cancelled') {
-            break;
-          }
-
-          let sceneInput;
-
-          if (sceneIndex === 0) {
-
-            sceneInput = {
-              ...scene,
-              sequenceIndex: 0,
-              mode: 'reference',
-              projectSeed: job.projectSeed,
-              audioSignature: job.audioSignature,
-              continuityRetry
-            };
-
-            if (
-              !sceneInput.images?.length &&
-              job.referenceImage
-            ) {
-              sceneInput.images = [
-                job.referenceImage
-              ];
-            }
-
-            console.log(
-              '[CONTINUITY] Scène 1 → image maître originale utilisée comme référence de départ, sha256=' +
-              fingerprintImage(
-                sceneInput.images?.[0] || job.referenceImage || ''
-              ).slice(0, 16) +
-              '….'
-            );
-
-          } else {
-
-            sceneInput = {
-              ...scene,
-              sequenceIndex: sceneIndex,
-              mode: 'reference',
-              projectSeed: job.projectSeed,
-              audioSignature: job.audioSignature,
-              continuityRetry,
-              previousScenePrompt:
-                String(
-                  previousScene?.prompt || ''
-                ).trim(),
-              images: [
-                continuityImage
-              ],
-              first_frame: null,
-              last_frame: null
-            };
-
-            const continuityReferenceHash =
-              fingerprintImage(continuityImage);
-
-            console.log(
-              '[CONTINUITY] Scène ' +
-              sceneNumber +
-              ' → UNIQUE référence temporelle = dernière frame exacte de la scène ' +
-              sceneIndex +
-              ', longueur=' +
-              Math.round(continuityImage.length / 1024) +
-              ' KB, sha256=' +
-              continuityReferenceHash.slice(0, 16) +
-              '…, tentative=' +
-              (continuityRetry + 1) +
-              '.'
-            );
-          }
-
-          const useExistingTask =
-            continuityRetry === 0 &&
-            Boolean(scene.videoId);
-
-          if (!useExistingTask) {
-
-            scene.videoId = null;
-            scene.videoUrl = null;
-
-            const created =
-              await createVideoTask(
-                sceneInput,
-                {
-                  get: () => ''
-                }
-              );
-
-            scene.videoId =
-              created.videoId;
-
-            scene.model =
-              created.model;
-
-            scene.sequenceIndex =
-              sceneIndex;
-
-            scene.referenceType =
-              sceneIndex === 0
-                ? 'initial'
-                : 'previous-last-frame';
-
-            scene.continuityRetry =
-              continuityRetry;
-
-            updateJob(job);
-          }
-
-          const generatedUrl =
-            await pollVideo(
-              scene.videoId,
-              {
-                get: () => ''
-              },
-              scene.model || MODEL
-            );
-
-          const expectedSceneFrames =
-            getValidLegacyFrames(
-              Number(scene.frames) ||
-              Math.round(
-                Number(scene.seconds || 8) *
-                FRAME_RATE
-              )
-            );
-
-          let boundaries;
-
-          try {
-            boundaries =
-              await extractSceneBoundaryFrames(
-                generatedUrl,
-                job.id,
-                sceneNumber,
-                sceneIndex < job.scenes.length - 1,
-                expectedSceneFrames - 1
-              );
-          } catch (integrityError) {
-            const integrityMessage =
-              String(
-                integrityError?.message ||
-                integrityError
-              );
-
-            if (
-              isGeneratedVideoIntegrityError(
-                integrityMessage
-              ) &&
-              continuityRetry < MAX_VIDEO_INTEGRITY_RETRIES
-            ) {
-              continuityRetry += 1;
-              scene.continuityRetry =
-                continuityRetry;
-              scene.videoId = null;
-              scene.videoUrl = null;
-
-              console.warn(
-                '[VIDEO INTEGRITY RETRY] Scène ' +
-                sceneNumber +
-                ' rejetée car le MP4 n’est pas décodable de bout en bout. Régénération interne, tentative ' +
-                (continuityRetry + 1) +
-                '/' +
-                (MAX_CONTINUITY_RETRIES + 1) +
-                '.'
-              );
-
-              updateJob(job);
-              continue;
-            }
-
-            throw integrityError;
-          }
-
-          if (sceneIndex > 0) {
-
-            const comparison =
-              await compareContinuityFrames(
-                continuityImage,
-                boundaries.firstDataUrl
-              );
-
-            scene.continuityMae =
-              Number(comparison.mae.toFixed(4));
-
-            console.log(
-              '[CONTINUITY CHECK] Scène ' +
-              sceneNumber +
-              ' → frame 0 vs dernière frame exacte S' +
-              sceneIndex +
-              ' RGB-MAE=' +
-              comparison.rgbMae.toFixed(4) +
-              ' HASH-DIST=' +
-              comparison.hashDistance.toFixed(4) +
-              ' (seuils RGB≤0.12, HASH≤0.18) firstSha=' +
-              boundaries.firstHash.slice(0, 16) +
-              '…'
-            );
-
-            if (!comparison.ok) {
-
-              if (
-                continuityRetry <
-                MAX_CONTINUITY_RETRIES
-              ) {
-
-                continuityRetry += 1;
-                scene.continuityRetry =
-                  continuityRetry;
-                scene.videoId =
-                  null;
-                scene.videoUrl =
-                  null;
-
-                console.warn(
-                  '[CONTINUITY RETRY] Scène ' +
-                  sceneNumber +
-                  ' rejetée : ouverture différente de la dernière frame exacte précédente (RGB-MAE=' +
-                  comparison.rgbMae.toFixed(4) +
-                  ', HASH-DIST=' +
-                  comparison.hashDistance.toFixed(4) +
-                  '). Nouvelle génération interne, tentative ' +
-                  (continuityRetry + 1) +
-                  '/' +
-                  (MAX_CONTINUITY_RETRIES + 1) +
-                  '.'
-                );
-
-                updateJob(job);
-                continue;
-              }
-
-              throw new Error(
-                'Continuité visuelle insuffisante après ' +
-                (MAX_CONTINUITY_RETRIES + 1) +
-                ' générations internes : ouverture de scène rejetée ; la frame 0 ne respecte pas suffisamment la dernière frame exacte de la scène précédente (RGB-MAE=' +
-                comparison.rgbMae.toFixed(3) +
-                ', HASH-DIST=' +
-                comparison.hashDistance.toFixed(3) +
-                ').'
-              );
-            }
-          }
-
-          scene.videoUrl =
-            generatedUrl;
-
-          if (
-            sceneIndex <
-            job.scenes.length - 1
-          ) {
-
-            if (!boundaries.lastDataUrl) {
-              throw new Error(
-                'Continuité : dernière image absente pour la scène ' +
-                sceneNumber
-              );
-            }
-
-            scene.last_frame =
-              boundaries.lastDataUrl;
-
-            scene.last_frame_path =
-              boundaries.filePath;
-
-            scene.last_frame_hash =
-              boundaries.lastHash;
-
-            scene.referenceReadyForNext =
-              true;
-
-            console.log(
-              '[CONTINUITY] Scène ' +
-              sceneNumber +
-              ' → frame finale validée et prête pour la scène ' +
-              (sceneNumber + 1) +
-              '.'
-            );
-          }
-
-          accepted = true;
-        }
+        scene.videoUrl =
+          await pollVideo(
+            scene.videoId,
+            {
+              get: () => ''
+            },
+            scene.model || MODEL
+          );
 
         if (job.status === 'cancelled') {
           scene.videoUrl = null;
@@ -2898,27 +1872,36 @@ async function processJob(job) {
           break;
         }
 
-        if (!accepted) {
-          break;
-        }
+        scene.status =
+          'done';
 
-        scene.status = 'done';
-        scene.error = null;
-        job.error = null;
+        scene.error =
+          null;
+
+        job.error =
+          null;
 
       } catch (error) {
 
         const message =
-          String(error?.message || error);
+          String(
+            error?.message ||
+            error
+          );
 
-        scene.status = 'failed';
-        scene.error = message;
+        scene.status =
+          'failed';
 
-        const failedSceneIndex =
-          job.scenes.indexOf(scene) + 1;
+        scene.error =
+          message;
+
+        const sceneIndex =
+          job.scenes.indexOf(
+            scene
+          ) + 1;
 
         job.error =
-          `Scène ${failedSceneIndex}: ${message}`;
+          `Scène ${sceneIndex}: ${message}`;
 
         console.error(
           '[JOB FAILED]',
@@ -2926,7 +1909,9 @@ async function processJob(job) {
           job.error
         );
 
-        job.status = 'failed';
+        job.status =
+          'failed';
+
         updateJob(job);
 
         break;
@@ -2940,26 +1925,30 @@ async function processJob(job) {
     } else if (
       job.scenes.length > 0 &&
       job.scenes.every(
-        s => s.status === 'done'
+        s =>
+          s.status === 'done'
       )
     ) {
-      job.status = 'completed';
+
+      job.status =
+        'completed';
+
     } else if (
-      job.status !== 'failed' &&
-      job.status !== 'cancelled'
+      job.status !==
+      'failed' &&
+      job.status !==
+      'cancelled'
     ) {
-      job.status = 'queued';
+
+      job.status =
+        'queued';
     }
 
     updateJob(job);
 
   } catch (error) {
 
-    console.error(
-      '[WORKER ERROR]',
-      job.id,
-      error
-    );
+    console.error('[WORKER ERROR]', job.id, error);
 
   } finally {
     activeJobIds.delete(job.id);
@@ -3040,7 +2029,7 @@ app.post(
       });
     }
 
-    const { scenes, referenceImage, visualBible } = req.body || {};
+    const { scenes, referenceImage } = req.body || {};
 
     if (
       !Array.isArray(scenes) ||
@@ -3078,29 +2067,6 @@ app.post(
     const hasSharedLegacyReference = Boolean(sharedReference) && scenes.every(scene =>
       Array.isArray(scene.images) && scene.images.length === 1 && scene.images[0] === sharedReference
     );
-    const cleanVisualBible =
-      typeof visualBible === 'string'
-        ? visualBible.trim().slice(0, 12000)
-        : '';
-
-    const projectSeed =
-      makeProjectSeed(
-        sharedReference,
-        cleanVisualBible
-      );
-
-    const audioSignature =
-      makeProjectAudioSignature(
-        projectSeed,
-        cleanVisualBible
-      );
-
-    console.log(
-      '[SEQUENCE IDENTITY] projectSeed=' +
-      projectSeed +
-      ' audioSignature=' +
-      audioSignature
-    );
 
     const id =
       crypto.randomUUID();
@@ -3123,17 +2089,9 @@ app.post(
 
       referenceImage: sharedReference,
 
-      // Permanent project-level identity/environment anchor reused by every scene.
-      visualBible:
-        cleanVisualBible,
-
-      projectSeed,
-
-      audioSignature,
-
       scenes:
         scenes.map(
-          (s, i) => {
+          s => {
 
             const legacyImage =
               s.image ||
@@ -3172,9 +2130,6 @@ app.post(
                 String(
                   s.prompt || ''
                 ),
-
-              sequenceIndex:
-                i,
 
               mode:
                 s.mode ||
@@ -3227,12 +2182,6 @@ app.post(
                 null,
 
               model:
-                null,
-
-              continuityRetry:
-                0,
-
-              continuityMae:
                 null,
 
               error:
