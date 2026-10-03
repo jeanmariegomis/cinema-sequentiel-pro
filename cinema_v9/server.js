@@ -397,6 +397,11 @@ const LEGACY_MODEL =
 
 const FRAME_RATE = 24;
 
+// Deterministic generation: the same prompt/reference/scene settings
+// produce the same Agnes seed unless the client explicitly supplies one.
+const AGNES_DETERMINISTIC_SEED =
+  String(process.env.AGNES_DETERMINISTIC_SEED || 'true').toLowerCase() !== 'false';
+
 const DATA_DIR =
   path.join(
     process.cwd(),
@@ -592,9 +597,7 @@ function loadJobs() {
         Array.isArray(job.scenes) &&
         job.scenes.some(scene => scene.mode === 'reference' || scene.mode === 'keyframe')
       ) {
-        job.status = 'failed';
-        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';
-        for (const scene of job.scenes) {
+        job.status = 'failed';        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';        for (const scene of job.scenes) {
           if (scene.status !== 'done') {
             scene.status = 'failed';
             scene.error = 'Job interrompu après redémarrage du serveur.';
@@ -882,6 +885,95 @@ function isQueueFullError(
 // 192 -> 193
 // ============================================================
 
+function normalizeSeedPrompt(value) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function fingerprintImage(value) {
+  const image = String(value || '').trim();
+
+  if (!image) {
+    return '';
+  }
+
+  // For data URLs, hash the decoded image bytes so harmless metadata/prefix
+  // differences do not change the deterministic seed.
+  const match = image.match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/is);
+
+  if (match) {
+    try {
+      return crypto
+        .createHash('sha256')
+        .update(Buffer.from(match[2], 'base64'))
+        .digest('hex');
+    } catch (_) {}
+  }
+
+  return crypto
+    .createHash('sha256')
+    .update(image, 'utf8')
+    .digest('hex');
+}
+
+function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFrames) {
+  if (!AGNES_DETERMINISTIC_SEED) {
+    return null;
+  }
+
+  const explicitSeed = Number(scene.seed);
+  if (Number.isSafeInteger(explicitSeed) && explicitSeed >= 0) {
+    return {
+      seed: explicitSeed,
+      promptHash: null,
+      imageHashes: []
+    };
+  }
+
+  const normalizedPrompt = normalizeSeedPrompt(prompt);
+  const imageFingerprints = images
+    .map(fingerprintImage)
+    .filter(Boolean);
+
+  const seedMaterial = JSON.stringify({
+    prompt: normalizedPrompt,
+    images: imageFingerprints,
+    mode: String(mode || '').trim().toLowerCase(),
+    width: dimensions.width,
+    height: dimensions.height,
+    frames: validFrames,
+    frame_rate: FRAME_RATE
+  });
+
+  const seedDigest = crypto
+    .createHash('sha256')
+    .update(seedMaterial, 'utf8')
+    .digest();
+
+  return {
+    seed: seedDigest.readUInt32BE(0),
+    promptHash: crypto
+      .createHash('sha256')
+      .update(normalizedPrompt, 'utf8')
+      .digest('hex')
+      .slice(0, 16),
+    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16))
+  };
+}
+
+function buildConsistencyPrompt(prompt) {
+  return [
+    'VISUAL CONTINUITY LOCK: preserve the exact identity and appearance of every existing character throughout the entire shot. Keep the same face, facial proportions, hairstyle, hairline, skin tone, age, body proportions, clothing, colors, accessories, and distinctive features from the reference image. Do not redesign, beautify, age, de-age, slim, enlarge muscles, or replace the character.',
+    'Preserve the same environment, architecture, important objects, spatial layout, time of day, lighting direction, color palette, and visual style established by the reference and visual bible unless the prompt explicitly requests a change.',
+    'REALISTIC CINEMATIC MOTION: natural human anatomy, realistic skin texture, physically plausible movement, believable weight and inertia, realistic hands and facial motion, natural eye focus and blinking, coherent shadows and reflections, photographic lighting, cinematic depth of field, subtle camera movement. Keep motion continuous from the first frame to the last frame; no sudden resets or scene changes.',
+    'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
+    'SCENE INSTRUCTIONS:\n' + prompt
+  ].join('\n\n');
+}
+
 function getValidLegacyFrames(
   requestedFrames
 ) {
@@ -1068,13 +1160,31 @@ async function createVideoTask(
       scene.aspect_ratio
     );
 
+  const seedInfo =
+    makeDeterministicSeed(
+      scene,
+      prompt,
+      images,
+      mode,
+      dimensions,
+      validFrames
+    );
+
+  const deterministicSeed =
+    seedInfo === null
+      ? null
+      : seedInfo.seed;
+
+  const continuityPrompt =
+    buildConsistencyPrompt(prompt);
+
   const primaryBody = {
 
     model:
       MODEL,
 
     prompt:
-      prompt,
+      continuityPrompt,
 
     width:
       dimensions.width,
@@ -1087,9 +1197,12 @@ async function createVideoTask(
 
     frame_rate:
       FRAME_RATE,
+    ...(deterministicSeed !== null
+      ? { seed: deterministicSeed }
+      : {}),
 
     negative_prompt:
-      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, CGI look, plastic skin, doll face'
+      'subtitles, captions, closed captions, on-screen text, written text, letters, words, logos, watermark, UI, duplicate person, extra fingers, deformed hands, distorted face, identity drift, sudden character change, costume change, background change, character redesign, face replacement, facial drift, body proportion change, age change, hairstyle change, skin tone change, clothing change, prop duplication, object morphing, background morphing, geometry warping, flicker, jitter, frame-to-frame inconsistency, temporal discontinuity, unnatural anatomy, rubbery motion, floating objects, impossible physics, oversmoothed skin, waxy skin, plastic skin, doll face, artificial CGI look, 3D render look, cartoon look, game-engine look, excessive sharpening'
   };
 
   if (mode === 'keyframe') {
@@ -1139,7 +1252,6 @@ async function createVideoTask(
     body,
     label
   ) {
-
     console.log(
       '[VIDEO CREATE]',
       label,
@@ -1172,7 +1284,16 @@ async function createVideoTask(
         imageCount:
           Array.isArray(body.extra_body?.image)
             ? body.extra_body.image.length
-            : (body.image ? 1 : 0)
+            : (body.image ? 1 : 0),
+
+        seed:
+          body.seed ?? null,
+
+        promptHash:
+          seedInfo?.promptHash ?? null,
+
+        imageHashes:
+          seedInfo?.imageHashes ?? []
       })
     );
 
@@ -1441,13 +1562,64 @@ async function pollVideo(
     );
   }
 
-  // Poll Agnes every 2s so completed jobs are returned promptly.
-  // Keep the same ~15-minute maximum polling window as the previous 5s profile.
+  // Adaptive polling: stay responsive when progress moves,
+  // but slow down when Agnes keeps the same progress to reduce 429s.
+  // The client-side progress tracking is unchanged.
   const maxAttempts =
     450;
 
-  const pollDelay =
+  const basePollDelay =
     2000;
+
+  let lastProgress = null;
+  let unchangedProgressPolls = 0;
+  let rateLimitCount = 0;
+
+  function getAdaptivePollDelay(progress) {
+    if (progress == null) {
+      return basePollDelay;
+    }
+
+    if (lastProgress === progress) {
+      unchangedProgressPolls++;
+    } else {
+      unchangedProgressPolls = 0;
+      lastProgress = progress;
+    }
+
+    if (unchangedProgressPolls >= 6) {
+      return 6000;
+    }
+
+    if (unchangedProgressPolls >= 3) {
+      return 4000;
+    }
+
+    return basePollDelay;
+  }
+
+  function getRetryAfterMs(response) {
+    const retryAfter = response.headers.get('retry-after');
+
+    if (!retryAfter) {
+      return null;
+    }
+
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(30000, Math.max(1000, Math.round(seconds * 1000)));
+    }
+
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(
+        30000,
+        Math.max(1000, retryAt - Date.now())
+      );
+    }
+
+    return null;
+  }
 
   for (
     let attempt = 0;
@@ -1498,18 +1670,38 @@ try {
 
     if (!response.ok) {
 
-    if (response.status === 429 || response.status === 503) {
-    console.warn(
-        `[VIDEO POLL] Agnes répond ${response.status}. Nouvelle tentative dans 30 secondes.`
-    );
+      if (response.status === 429 || response.status === 503) {
+        const retryAfterMs =
+          getRetryAfterMs(response);
 
-    await sleep(30000);
-    continue;
-    }
+        rateLimitCount++;
 
-    throw new Error(
+        // Prefer Agnes' Retry-After when supplied. Otherwise use a
+        // controlled backoff so repeated 429s do not create a tight loop.
+        const fallbackDelay =
+          Math.min(
+            30000,
+            rateLimitCount <= 1
+              ? 10000
+              : rateLimitCount === 2
+                ? 20000
+                : 30000
+          );
+
+        const delay =
+          retryAfterMs ?? fallbackDelay;
+
+        console.warn(
+          `[VIDEO POLL] Agnes répond ${response.status}. Nouvelle tentative dans ${Math.round(delay / 1000)} secondes.`
+        );
+
+        await sleep(delay);
+        continue;
+      }
+
+      throw new Error(
         `Polling HTTP ${response.status}: ${txt.slice(0, 1200)}`
-    );
+      );
     }
 
     let data;
@@ -1600,7 +1792,10 @@ return videoUrl;
     }
 
     await sleep(
-      pollDelay
+      getAdaptivePollDelay(
+        data.progress != null
+          ? Number(data.progress)
+          : null      )
     );
   }
 
@@ -1653,19 +1848,14 @@ async function processJob(job) {
       try {
 
         if (!scene.videoId) {
-          // Preserve each scene's own reference image(s).
-          // Use the shared master reference only when this scene has no image of its own.
           const sceneInput = {
             ...scene,
-            images: scene.images?.length
-              ? scene.images
-              : (job.referenceImage ? [job.referenceImage] : [])
+            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
           };
           const created = await createVideoTask(sceneInput, { get: () => '' });
           scene.videoId = created.videoId;
           scene.model = created.model;
-          updateJob(job);
-        }
+          updateJob(job);        }
 
         scene.videoUrl =
           await pollVideo(
@@ -1968,9 +2158,10 @@ app.post(
                 s.last_frame ||
                 null,
 
-              // Keep scene-specific references intact.
-              // A shared reference is only a fallback for scenes without their own image.
-              images: images,
+              images:
+                hasSharedLegacyReference || suppliedReference
+                  ? []
+                  : images,
 
               frames:
                 Number(
