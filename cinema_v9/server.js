@@ -1009,8 +1009,25 @@ function makeDeterministicSeed(
     Number(projectSeed) >= 0 &&
     continuityRetry === 0
   ) {
+    const sequenceIndex =
+      Number.isInteger(Number(scene.sequenceIndex))
+        ? Number(scene.sequenceIndex)
+        : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
+
+    const sceneSeedMaterial = JSON.stringify({
+      projectSeed: Number(projectSeed),
+      sequenceIndex,
+      prompt: normalizedPrompt
+    });
+
+    const sceneSeed = crypto
+      .createHash('sha256')
+      .update(sceneSeedMaterial, 'utf8')
+      .digest()
+      .readUInt32BE(0);
+
     return {
-      seed: Number(projectSeed),
+      seed: sceneSeed,
       promptHash: crypto
         .createHash('sha256')
         .update(normalizedPrompt, 'utf8')
@@ -1020,7 +1037,7 @@ function makeDeterministicSeed(
         .map(fingerprintImage)
         .filter(Boolean)
         .map(hash => hash.slice(0, 16)),
-      scope: 'project'
+      scope: 'project-scene'
     };
   }
   const imageFingerprints = images
@@ -1063,9 +1080,20 @@ function makeDeterministicSeed(
   };
 }
 
+function extractSceneStoryText(prompt = '') {
+  const text = String(prompt || '');
+  const match = text.match(
+    /SCENE\\s+\\d+\\s+OF\\s+\\d+\\s*:\\s*([\\s\\S]*?)(?:\\nLANGUAGE ENFORCEMENT FOR THIS SCENE:|\\nCONTINUITY:|$)/i
+  );
+  return match
+    ? match[1].trim()
+    : text.trim();
+}
+
 function sceneRequestsMusic(prompt = '') {
+  const storyText = extractSceneStoryText(prompt);
   return /(?:\\bmusique\\b|\\bmusic\\b|\\bscore\\b|\\binstrumental\\b|\\bsoundtrack\\b|\\bbande sonore\\b|\\bchanson\\b|\\bsong\\b|\\bbackground music\\b|\\bmusique de fond\\b|\\bmusi[cq]al)/i.test(
-    String(prompt || '')
+    storyText
   );
 }
 
