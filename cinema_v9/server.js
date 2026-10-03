@@ -1063,17 +1063,36 @@ function makeDeterministicSeed(
   };
 }
 
-function buildProjectAudioContinuityPrompt(audioSignature = '') {
+function sceneRequestsMusic(prompt = '') {
+  return /(?:\\bmusique\\b|\\bmusic\\b|\\bscore\\b|\\binstrumental\\b|\\bsoundtrack\\b|\\bbande sonore\\b|\\bchanson\\b|\\bsong\\b|\\bbackground music\\b|\\bmusique de fond\\b|\\bmusi[cq]al)/i.test(
+    String(prompt || '')
+  );
+}
+
+function buildProjectAudioContinuityPrompt(
+  audioSignature = '',
+  prompt = ''
+) {
   const signature = String(audioSignature || '').trim();
 
+  if (sceneRequestsMusic(prompt)) {
+    return [
+      'PROJECT AUDIO POLICY: music is explicitly requested for this scene.',
+      'Keep the requested music coherent with the project audio identity when possible.',
+      signature
+        ? 'PROJECT AUDIO SIGNATURE: ' + signature
+        : 'PROJECT AUDIO SIGNATURE: explicit-scene-music'
+    ].join('\\n');
+  }
+
   return [
-    'PROJECT AUDIO MASTER LOCK: all scenes in this job belong to one continuous film soundtrack identity.',
-    'Keep the SAME instrumental musical identity from scene to scene: same broad composition character, tempo family, harmonic language, instrumentation family, arrangement style, production texture and perceived loudness.',
-    'Do not replace the established soundtrack with a different song, unrelated genre, unrelated instrumentation, different tempo family, or a new musical mood unless the scene explicitly requests a deliberate music change.',
-    'Do not restart the music with an unrelated opening. Treat the project soundtrack as already established before this scene begins and preserve its musical fingerprint.',
+    'PROJECT AUDIO POLICY: NO BACKGROUND MUSIC BY DEFAULT.',
+    'Preserve scripted dialogue exactly as written and keep natural diegetic sounds that belong to the visible action.',
+    'Do not invent, add, continue, restart or fade in instrumental music, background score, soundtrack, song, singing or non-diegetic musical beds.',
+    'AUDIO PRIORITY: scripted dialogue first; then natural action/room/animal sounds when appropriate; silence is preferable to invented music.',
     signature
-      ? 'PROJECT AUDIO SIGNATURE: ' + signature
-      : 'PROJECT AUDIO SIGNATURE: stable-default'
+      ? 'PROJECT AUDIO SIGNATURE: applies to dialogue/voice identity and natural sound character, NOT to background music.'
+      : 'PROJECT AUDIO SIGNATURE: stable-default; no background music.'
   ].join('\\n');
 }
 
@@ -1111,13 +1130,16 @@ function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
     'ENVIRONMENT LOCK: preserve exact architecture, important props, spatial layout, time of day, lighting direction, color palette and visual style established by the reference and visual bible unless explicitly changed.',
     'ANIMAL LOCK: if an animal is present, preserve exact species, face, fur/feather pattern, colors, eyes, ears, size, body proportions and silhouette. Never clone, duplicate or replace it.',
     'PERMANENT CHARACTER PRESENCE LOCK: once a character or animal is established by the master reference/visual bible, keep it present and visually coherent unless the scene explicitly says it exits, leaves the frame, or is intentionally removed.',
+    'CAMERA CONTINUITY LOCK: each scene is ONE continuous take unless the scene prompt explicitly requires a cut. Never make an instantaneous angle change, jump cut, snap zoom, sudden focal-length jump, teleporting viewpoint, mirrored viewpoint or abrupt recomposition. Camera motion must accelerate, turn, pan, tilt, dolly or zoom progressively from the existing camera state.',
+    'CAMERA MOVEMENT INTEGRITY: when the prompt asks for multiple camera directions, connect them with one physically continuous camera path. Never satisfy a later camera instruction by abruptly replacing the composition with a new shot.',
+    'PERFORMANCE IDENTITY LOCK: preserve the established character’s baseline temperament, social attitude, energy, gaze behavior, gesture style and emotional realism across the sequence. Do not automatically turn a calm/focused character into a smiling, flirtatious, excited, angry or theatrical version unless the scene explicitly requests that emotional change.',
+    'EXPRESSION CONTINUITY LOCK: facial expressions must evolve gradually from the previous visible emotional state. No unexplained smile, smirk, surprise, exaggerated reaction, personality switch or emotional reset.',
     'REALISTIC CINEMATIC MOTION: use natural anatomy, believable weight/inertia, realistic hands and facial motion, natural eye focus/blinking, coherent shadows/reflections, cinematic depth of field and restrained camera movement.',
-    'The supplied reference image defines existing identity and appearance. The scene prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a replacement.',
+    'The supplied reference image defines identity and appearance. The scene prompt defines the intended action. Camera instructions must be realized as continuous motion, not as shot replacement. Animate the existing subject instead of inventing a replacement.',
     lockedBible,
-    buildProjectAudioContinuityPrompt(audioSignature),
-    'AUDIO PRESENCE LOCK: unless the scene explicitly requests silence/no sound, include an audible cinematic sound bed or instrumental score. Never leave a scene randomly silent.',
-    'AUDIO CONTINUITY LOCK: when multiple scenes belong to one sequence, preserve a coherent recurring sonic identity, related mood, instrumentation family, production character and stable perceived volume. No unrelated genre changes or random audio drops.',
-    'AUDIO SPEECH LOCK: only scripted dialogue may be spoken. No invented narration, singing, conversation, human voice, animal speech or lip-sync. A subject with no scripted dialogue remains silent.',
+    buildProjectAudioContinuityPrompt(audioSignature, prompt),
+    'AUDIO PRESENCE POLICY: scripted dialogue is preserved. Natural diegetic sound from the visible action may be present. Background music is OFF unless this scene explicitly requests music.',
+    'AUDIO CONTINUITY LOCK: keep the same character voice identity across scenes when dialogue is scripted. Do not introduce unrelated voices, narration, singing or vocal improvisation.',
     buildActionIntegrityPrompt(prompt),
     'SCENE INSTRUCTIONS:\n' + prompt
   ].join('\n\n');
@@ -1125,12 +1147,14 @@ function buildConsistencyPrompt(prompt, visualBible = '', audioSignature = '') {
 
 function buildContinuationPrompt(prompt, visualBible = '', audioSignature = '') {
   return [
-    'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot.',
-    'FIRST 0.5 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props and lighting visually locked before introducing new motion.',
+    'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot, not as inspiration or a loose reference.',
+    'FIRST 1.0 SECOND CONTINUITY LOCK: keep camera framing, scale, viewpoint, character positions, body pose, hand positions, hair silhouette, facial expression, clothing, props, lighting and emotional state visually stable before introducing substantial motion.',
     'DO NOT RESET OR RECOMPOSE: do not restart from the master reference image, do not redesign the character, do not move the character to a new location, and do not replace the supplied starting frame with a newly invented opening.',
     'HAIR AND FACE MUST MATCH THE SUPPLIED FRAME: hair length, curl pattern, hairline, volume, color, face shape, eyes and all visible identity details must remain unchanged while the new action begins.',
+    'PERSONALITY MUST CARRY FORWARD: begin with the same temperament, gaze, facial attitude, body language and level of energy visible at the end of the previous scene. Any emotional change must have a visible cause in the new scene action.',
+    'CAMERA MUST CARRY FORWARD: continue from the previous frame’s composition with one smooth camera path. No internal cut, jump in angle, snap zoom, sudden lens change, mirrored view or instant reframing. Any later camera movement must start gradually from this established state.',
     'After the locked opening moment, continue forward only according to the new scene action. The previous-scene frame is the temporal starting state; the visual bible is the permanent identity/environment constraint.',
-    'CONTINUITY COMPOSITION LOCK: during the first 0.5 seconds, do not zoom, crop, reframe, cut, rotate, mirror, or change the camera height/focal relationship. The first generated frame must remain visually close to the supplied previous final frame.',
+    'CONTINUITY COMPOSITION LOCK: during the first 1.0 second, do not zoom, crop, reframe, cut, rotate, mirror, change camera height, or change focal relationship. The first generated frames must remain visually close to the supplied previous final frame.',
     'PERSISTENT SUBJECT LOCK: every established permanent character or animal visible in the previous final frame remains present unless the scene explicitly instructs an exit. Do not silently remove the cat, replace the woman, or invent a new subject.',
     buildConsistencyPrompt(prompt, visualBible, audioSignature)
   ].join('\n\n');
@@ -2667,7 +2691,7 @@ async function processJob(job) {
               throw new Error(
                 'Continuité visuelle insuffisante après ' +
                 (MAX_CONTINUITY_RETRIES + 1) +
-                ' générations internes : frame 0 trop différente de la dernière frame exacte de la scène précédente (RGB-MAE=' +
+                ' générations internes : ouverture de scène rejetée ; la frame 0 ne respecte pas suffisamment la dernière frame exacte de la scène précédente (RGB-MAE=' +
                 comparison.rgbMae.toFixed(3) +
                 ', HASH-DIST=' +
                 comparison.hashDistance.toFixed(3) +
