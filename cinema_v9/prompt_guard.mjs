@@ -3,7 +3,7 @@
 // It does not touch authentication, job polling, downloads, progress, or continuity state.
 
 const ORIGINAL_FETCH = globalThis.fetch;
-const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE GUARD V6]';
+const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE GUARD V7]';
 
 function buildGuard(prompt) {
   const text = String(prompt || '');
@@ -36,11 +36,13 @@ function buildGuard(prompt) {
 
   if (isFirstScene) {
     rules.push(
-      'FIRST SCENE OPENING CAMERA MASTER LOCK: the supplied master reference image is the authoritative visual and camera starting state. Treat its exact visible composition as frame 0. Do not reinterpret the reference as a new shot.',
-      'FIRST SCENE OPENING HOLD: for the first approximately 1.5 seconds, keep the camera effectively locked in place. No roll, tilt, pan, orbit, dolly, truck, crane, whip-pan, zoom, focal-length change, camera-height change, viewpoint switch, mirror, crop jump or perspective flip. Subject scale and framing must remain essentially unchanged.',
-      'FIRST SCENE NO-BASCULE: the camera horizon must remain level and the verticals must remain stable during the opening hold. Absolutely no sudden camera bascule/dutch angle, diagonal horizon, rotational snap or sideways camera flip.',
-      'FIRST SCENE TRANSITION AFTER HOLD: only after the opening hold may a requested camera movement begin, and it must start from the exact reference composition with a smooth gradual acceleration. Never jump directly to the requested destination angle.',
-      'FIRST SCENE CAMERA CAUSALITY: if the scene prompt does not explicitly request a camera movement, keep the camera stable for the entire scene. Do not invent cinematic camera movement merely for visual variety.'
+      'FIRST SCENE OPENING CAMERA MASTER LOCK — ABSOLUTE: the supplied master reference image is the authoritative visual and camera starting state. Treat its exact visible composition as frame 0. Do not reinterpret the reference as a new shot.',
+      'FIRST SCENE OPENING HOLD — 2.5 SECONDS: for the first 2.5 seconds, keep the camera effectively locked to the reference composition. No roll, tilt, pan, orbit, dolly, truck, crane, whip-pan, zoom, focal-length change, camera-height change, viewpoint switch, mirror, crop jump, perspective flip, close-up-to-wide transition, wide-to-close transition, or subject-scale change.',
+      'FIRST SCENE NO-BASCULE: the camera horizon must remain level and the verticals must remain stable during the entire 2.5-second opening hold. Absolutely no sudden camera bascule/dutch angle, diagonal horizon, rotational snap or sideways camera flip.',
+      'FIRST SCENE NO-RECOMPOSITION: do not replace the opening framing with a new cinematic composition. The woman, bowl, cat and other visible reference subjects must remain in the same spatial relationship during the opening hold.',
+      'FIRST SCENE NO-CUT SUBSTITUTE: do not simulate a cut by rapidly moving the camera, changing focal length, changing depth-of-field, changing perspective, or jumping subject scale. The opening must remain one physical camera state.',
+      'FIRST SCENE TRANSITION AFTER HOLD: only after 2.5 seconds may a requested camera movement begin, and it must start from the exact reference composition with gradual acceleration. If the prompt does not explicitly request a camera move, keep the camera stable for the entire scene.',
+      'FIRST SCENE CAMERA CAUSALITY: cinematic variety is never a reason to invent a camera movement. Follow the written camera instruction only after the opening hold and only as a physically continuous movement.'
     );
   }
 
@@ -83,4 +85,4 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
   return ORIGINAL_FETCH.call(this, input, init);
 };
 
-console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state guard V6 loaded.');
+console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state guard V7 loaded.');
