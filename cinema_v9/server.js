@@ -430,6 +430,7 @@ const AGNES_POLL_TIMEOUT_MS = 30000;
 // previous scene's final frame before accepting it. Rejected continuations
 // are regenerated internally; client progress semantics remain unchanged.
 const MAX_CONTINUITY_RETRIES = 2;
+const MAX_VIDEO_INTEGRITY_RETRIES = 2;
 const CONTINUITY_START_MAX_MAE = 0.14;
 const CONTINUITY_RETRY_SEED_SALT = 'CSP-V2-CONTINUITY-RETRY';
 
@@ -825,6 +826,54 @@ async function sleep(ms) {
         ms
       )
   );
+}
+
+async function validateGeneratedVideoIntegrity(inputPath) {
+  const { default: ffmpegInstaller } =
+    await import('@ffmpeg-installer/ffmpeg');
+  const { spawn } = await import('child_process');
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      ffmpegInstaller.path,
+      [
+        '-v', 'error',
+        '-i', inputPath,
+        '-map', '0:v:0',
+        '-f', 'null',
+        '-'
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] }
+    );
+
+    let stderr = '';
+
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', reject);
+
+    child.on('close', code => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            'VIDEO_INTEGRITY: FFmpeg ne peut pas décoder entièrement la piste vidéo (' +
+            code +
+            '): ' +
+            stderr.slice(-1600)
+          )
+        );
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function isGeneratedVideoIntegrityError(message) {
+  return String(message || '').includes('VIDEO_INTEGRITY:');
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -2108,6 +2157,16 @@ async function extractSceneBoundaryFrames(
 
     fs.writeFileSync(inputPath, buffer);
 
+    console.log(
+      '[VIDEO INTEGRITY] Vérification complète du décodage vidéo avant extraction des frames…'
+    );
+
+    await validateGeneratedVideoIntegrity(inputPath);
+
+    console.log(
+      '[VIDEO INTEGRITY] Décodage vidéo validé.'
+    );
+
     const { default: ffmpegInstaller } =
       await import('@ffmpeg-installer/ffmpeg');
     const { spawn } = await import('child_process');
@@ -2677,14 +2736,52 @@ async function processJob(job) {
               )
             );
 
-          const boundaries =
-            await extractSceneBoundaryFrames(
-              generatedUrl,
-              job.id,
-              sceneNumber,
-              sceneIndex < job.scenes.length - 1,
-              expectedSceneFrames - 1
-            );
+          let boundaries;
+
+          try {
+            boundaries =
+              await extractSceneBoundaryFrames(
+                generatedUrl,
+                job.id,
+                sceneNumber,
+                sceneIndex < job.scenes.length - 1,
+                expectedSceneFrames - 1
+              );
+          } catch (integrityError) {
+            const integrityMessage =
+              String(
+                integrityError?.message ||
+                integrityError
+              );
+
+            if (
+              isGeneratedVideoIntegrityError(
+                integrityMessage
+              ) &&
+              continuityRetry < MAX_VIDEO_INTEGRITY_RETRIES
+            ) {
+              continuityRetry += 1;
+              scene.continuityRetry =
+                continuityRetry;
+              scene.videoId = null;
+              scene.videoUrl = null;
+
+              console.warn(
+                '[VIDEO INTEGRITY RETRY] Scène ' +
+                sceneNumber +
+                ' rejetée car le MP4 n’est pas décodable de bout en bout. Régénération interne, tentative ' +
+                (continuityRetry + 1) +
+                '/' +
+                (MAX_CONTINUITY_RETRIES + 1) +
+                '.'
+              );
+
+              updateJob(job);
+              continue;
+            }
+
+            throw integrityError;
+          }
 
           if (sceneIndex > 0) {
 
