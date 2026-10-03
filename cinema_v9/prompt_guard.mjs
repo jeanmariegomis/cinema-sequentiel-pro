@@ -3,7 +3,7 @@
 // It does not touch authentication, job polling, downloads, progress, or continuity state.
 
 const ORIGINAL_FETCH = globalThis.fetch;
-const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO GUARD V2]';
+const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO GUARD V3]';
 
 function buildGuard(prompt) {
   const text = String(prompt || '');
@@ -15,9 +15,10 @@ function buildGuard(prompt) {
     'ACTION SUBJECT LOCK: only the named subject performs the named action. Keep hands, tools, objects, targets, trajectories, and physical contact consistent with the written instruction.',
     'DIALOGUE LOCK: no character speaks, lip-syncs, mouths words, or produces dialogue unless dialogue is explicitly written in the scene prompt. Never invent conversations or voices.',
     'NO UNREQUESTED EVENTS: do not add new characters, actions, objects, accidents, reactions, transformations, story events, or dialogue merely because they are visually plausible.',
-    'AUDIO CONTINUITY LOCK: preserve the requested sound design across the scene. Do not invent music, dialogue, narration, singing, voices, or sound effects that are not requested.',
-    'MUSIC CONSISTENCY LOCK: when the prompt specifies music or a musical atmosphere, keep the same musical style, mood, instrumentation, tempo, and sonic identity throughout the shot. Do not switch to an unrelated musical genre.',
-    'SCENE AUDIO LOCK: if the prompt or project audio direction requests music/ambience, keep an audible, coherent background track or ambience throughout the entire scene unless a deliberate fade or silence is explicitly requested. Do not randomly start or stop music.',
+    'AUDIO PRESENCE LOCK: unless the scene explicitly requests silence/no sound, ALWAYS include an audible cinematic sound bed or instrumental music. Never leave a scene randomly silent.',
+    'AUDIO CONTINUITY LOCK: preserve the established project sound character across scenes. Keep a related mood, instrumentation family, production character and stable perceived volume. Do not switch to an unrelated musical genre or randomly drop the audio.',
+    'MUSIC CONSISTENCY LOCK: when music is present or requested, keep the same broad musical identity, tempo family, instrumentation family and sonic character across the sequence unless the prompt explicitly requests a deliberate change.',
+    'SCENE AUDIO LOCK: no abrupt start/stop, no random silence, no invented narrator, no singing or vocals unless explicitly scripted, and no unrequested sound effects that create new story events.',
     'DO NOT USE AUDIO TO INVENT STORY EVENTS: sound must not introduce an unseen speaking character, conversation, narrator, laugh, animal voice, or other event that is absent from the visual/story instructions.'
   ];
   const animalPattern = /\b(chat|chats|cat|cats|chien|chiens|dog|dogs|animal|animaux|oiseau|oiseaux|bird|birds|pigeon|pigeons|cheval|chevaux|horse|horses)\b/i;
@@ -58,4 +59,4 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
   return ORIGINAL_FETCH.call(this, input, init);
 };
 
-console.log('[PROMPT GUARD] Global character/animal/action/audio guard loaded.');
+console.log('[PROMPT GUARD] Global character/animal/action/audio guard V3 loaded.');
