@@ -597,8 +597,7 @@ function loadJobs() {
         Array.isArray(job.scenes) &&
         job.scenes.some(scene => scene.mode === 'reference' || scene.mode === 'keyframe')
       ) {
-        job.status = 'failed';
-        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';
+        job.status = 'failed';        job.error = 'Job interrompu : référence vidéo absente après redémarrage du serveur.';
         for (const scene of job.scenes) {
           if (scene.status !== 'done') {
             scene.status = 'failed';
@@ -887,6 +886,40 @@ function isQueueFullError(
 // 192 -> 193
 // ============================================================
 
+function normalizeSeedPrompt(value) {
+  return String(value || '')
+    .replace(/\\r\\n/g, '\\n')
+    .replace(/[\\t ]+/g, ' ')
+    .replace(/\\n{3,}/g, '\\n\\n')
+    .trim();
+}
+
+function fingerprintImage(value) {
+  const image = String(value || '').trim();
+
+  if (!image) {
+    return '';
+  }
+
+  // For data URLs, hash the decoded image bytes so harmless metadata/prefix
+  // differences do not change the deterministic seed.
+  const match = image.match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/is);
+
+  if (match) {
+    try {
+      return crypto
+        .createHash('sha256')
+        .update(Buffer.from(match[2], 'base64'))
+        .digest('hex');
+    } catch (_) {}
+  }
+
+  return crypto
+    .createHash('sha256')
+    .update(image, 'utf8')
+    .digest('hex');
+}
+
 function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFrames) {
   if (!AGNES_DETERMINISTIC_SEED) {
     return null;
@@ -894,24 +927,42 @@ function makeDeterministicSeed(scene, prompt, images, mode, dimensions, validFra
 
   const explicitSeed = Number(scene.seed);
   if (Number.isSafeInteger(explicitSeed) && explicitSeed >= 0) {
-    return explicitSeed;
+    return {
+      seed: explicitSeed,
+      promptHash: null,
+      imageHashes: []
+    };
   }
 
+  const normalizedPrompt = normalizeSeedPrompt(prompt);
+  const imageFingerprints = images
+    .map(fingerprintImage)
+    .filter(Boolean);
+
   const seedMaterial = JSON.stringify({
-    prompt,
-    images,
-    mode,
+    prompt: normalizedPrompt,
+    images: imageFingerprints,
+    mode: String(mode || '').trim().toLowerCase(),
     width: dimensions.width,
     height: dimensions.height,
     frames: validFrames,
     frame_rate: FRAME_RATE
   });
 
-  return crypto
+  const seedDigest = crypto
     .createHash('sha256')
     .update(seedMaterial, 'utf8')
-    .digest()
-    .readUInt32BE(0);
+    .digest();
+
+  return {
+    seed: seedDigest.readUInt32BE(0),
+    promptHash: crypto
+      .createHash('sha256')
+      .update(normalizedPrompt, 'utf8')
+      .digest('hex')
+      .slice(0, 16),
+    imageHashes: imageFingerprints.map(hash => hash.slice(0, 16))
+  };
 }
 
 function buildConsistencyPrompt(prompt) {
@@ -1110,7 +1161,7 @@ async function createVideoTask(
       scene.aspect_ratio
     );
 
-  const deterministicSeed =
+  const seedInfo =
     makeDeterministicSeed(
       scene,
       prompt,
@@ -1119,6 +1170,11 @@ async function createVideoTask(
       dimensions,
       validFrames
     );
+
+  const deterministicSeed =
+    seedInfo === null
+      ? null
+      : seedInfo.seed;
 
   const continuityPrompt =
     buildConsistencyPrompt(prompt);
@@ -1198,7 +1254,6 @@ async function createVideoTask(
     body,
     label
   ) {
-
     console.log(
       '[VIDEO CREATE]',
       label,
@@ -1234,7 +1289,13 @@ async function createVideoTask(
             : (body.image ? 1 : 0),
 
         seed:
-          body.seed ?? null
+          body.seed ?? null,
+
+        promptHash:
+          seedInfo?.promptHash ?? null,
+
+        imageHashes:
+          seedInfo?.imageHashes ?? []
       })
     );
 
@@ -1797,8 +1858,7 @@ async function processJob(job) {
           const created = await createVideoTask(sceneInput, { get: () => '' });
           scene.videoId = created.videoId;
           scene.model = created.model;
-          updateJob(job);
-        }
+          updateJob(job);        }
 
         scene.videoUrl =
           await pollVideo(
