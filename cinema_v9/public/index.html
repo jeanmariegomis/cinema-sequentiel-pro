@@ -2117,16 +2117,49 @@ function setupRefImageHandlers(){
     logAuth('Session absente — redirection vers /login.html','warn');
     location.replace('/login.html?next=/');
   }
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   async function check(){
-    try{
-      const r=await fetch('/api/auth/status',{method:'GET',credentials:'include',cache:'no-store',headers:{'Accept':'application/json'}});
-      const data=await r.json().catch(()=>({}));
-      logAuth('/api/auth/status → HTTP '+r.status+' · authenticated='+!!data.authenticated,data.authenticated?'success':'warn');
-      if(r.ok && data.authenticated){ showApp(); } else { goLogin(); }
-    }catch(e){
-      logAuth('Erreur de vérification : '+e.message,'error');
-      goLogin();
+    for(let attempt=1; attempt<=3; attempt++){
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try{
+        const r = await fetch('/api/auth/status',{
+          method:'GET',
+          credentials:'include',
+          cache:'no-store',
+          headers:{
+            'Accept':'application/json',
+            'Cache-Control':'no-cache'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        const data = await r.json().catch(()=>({}));
+        logAuth('/api/auth/status → HTTP '+r.status+' · authenticated='+!!data.authenticated,data.authenticated?'success':'warn');
+
+        if(r.ok && data.authenticated){
+          showApp();
+          return;
+        }
+
+        if(r.status===401 || r.status===403){
+          goLogin();
+          return;
+        }
+      }catch(e){
+        clearTimeout(timer);
+        logAuth(
+          'Tentative '+attempt+'/3 : '+
+          (e.name==='AbortError' ? 'délai dépassé' : e.message),
+          'warn'
+        );
+      }
+
+      if(attempt<3) await sleep(1000*attempt);
     }
+
+    logAuth('Serveur de session indisponible après 3 tentatives — retour connexion','error');
+    goLogin();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',check,{once:true});
   else check();
