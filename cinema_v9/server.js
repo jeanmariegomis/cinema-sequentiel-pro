@@ -1745,6 +1745,9 @@ async function pollVideo(
   const basePollDelay =
     2000;
 
+  const nearCompletionPollDelay =
+    1000;
+
   let lastProgress = null;
   let unchangedProgressPolls = 0;
   let rateLimitCount = 0;
@@ -1752,6 +1755,10 @@ async function pollVideo(
   function getAdaptivePollDelay(progress) {
     if (progress == null) {
       return basePollDelay;
+    }
+
+    if (Number(progress) >= 90) {
+      return nearCompletionPollDelay;
     }
 
     if (lastProgress === progress) {
