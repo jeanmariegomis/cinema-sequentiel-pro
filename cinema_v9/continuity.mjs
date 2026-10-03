@@ -6,20 +6,24 @@ const root = process.cwd();
 const serverPath = path.join(root, 'server.js');
 const source = fs.readFileSync(serverPath, 'utf8');
 
-if (!source.includes('// __CSP_AUTO_CONTINUITY_V1__')) {
+if (!source.includes('// __CSP_AUTO_CONTINUITY_V2__')) {
   let out = source;
 
   const helperMarker = '// ============================================================\n// JOB WORKER\n// ============================================================';
-  const helper = String.raw`// __CSP_AUTO_CONTINUITY_V1__
+  const helper = String.raw`// __CSP_AUTO_CONTINUITY_V2__
+// Automatic scene-to-scene continuity.
+// Scene 1 is NEVER altered. Every later scene receives the final
+// frame extracted from the immediately previous completed scene.
 async function extractLastFrameAsDataUrl(videoUrl) {
   const tempId = crypto.randomUUID();
   const inputPath = path.join(DATA_DIR, '__csp_video_' + tempId + '.mp4');
   const outputPath = path.join(DATA_DIR, '__csp_frame_' + tempId + '.jpg');
 
   try {
-    console.log('[CONTINUITY] Téléchargement de la scène terminée pour extraire la dernière frame…');
+    console.log('[CONTINUITY] Téléchargement de la scène terminée pour capturer sa dernière image…');
     const response = await fetchWithTimeout(videoUrl, {}, AGNES_REQUEST_TIMEOUT_MS);
     if (!response.ok) throw new Error('Téléchargement vidéo HTTP ' + response.status);
+
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(inputPath, buffer);
 
@@ -28,21 +32,28 @@ async function extractLastFrameAsDataUrl(videoUrl) {
 
     await new Promise((resolve, reject) => {
       const child = spawn(ffmpegInstaller.path, [
-        '-y', '-sseof', '-0.08', '-i', inputPath,
-        '-frames:v', '1', '-q:v', '2', outputPath
+        '-y',
+        '-sseof', '-0.01',
+        '-i', inputPath,
+        '-frames:v', '1',
+        '-q:v', '2',
+        outputPath
       ], { stdio: ['ignore', 'ignore', 'pipe'] });
+
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk.toString(); });
       child.on('error', reject);
       child.on('close', code => {
         if (code === 0) resolve();
-        else reject(new Error('FFmpeg frame extraction failed (' + code + '): ' + stderr.slice(-1200)));
+        else reject(new Error('FFmpeg dernière frame failed (' + code + '): ' + stderr.slice(-1200)));
       });
     });
 
     const jpg = fs.readFileSync(outputPath);
+    if (!jpg.length) throw new Error('Image finale vide');
+
     const dataUrl = 'data:image/jpeg;base64,' + jpg.toString('base64');
-    console.log('[CONTINUITY] Dernière frame extraite: ' + Math.round(jpg.length / 1024) + ' KB');
+    console.log('[CONTINUITY] Dernière image capturée: ' + Math.round(jpg.length / 1024) + ' KB');
     return dataUrl;
   } finally {
     for (const file of [inputPath, outputPath]) {
@@ -59,14 +70,15 @@ async function extractLastFrameAsDataUrl(videoUrl) {
   const doneNeedle = `        scene.status =
           'done';`;
   const doneReplacement = `        // __CSP_AUTO_CONTINUITY_CAPTURE__
-        // Capture the exact final frame before marking the scene complete.
-        // It becomes the only reference image for the next scene.
+        // IMPORTANT: Scene 1 is untouched. Once any scene completes,
+        // capture its final image in memory for the next scene.
         if (scene.videoUrl && !scene.last_frame) {
           try {
             scene.last_frame = await extractLastFrameAsDataUrl(scene.videoUrl);
-            console.log('[CONTINUITY] Scène ' + (job.scenes.indexOf(scene) + 1) + ': dernière frame prête pour la scène suivante.');
+            const completedSceneNumber = job.scenes.indexOf(scene) + 1;
+            console.log('[CONTINUITY] Scène ' + completedSceneNumber + ': dernière image prête comme référence de la scène suivante.');
           } catch (frameError) {
-            console.warn('[CONTINUITY] Extraction dernière frame impossible:', frameError?.message || frameError);
+            console.warn('[CONTINUITY] Impossible de capturer la dernière image:', frameError?.message || frameError);
           }
         }
 
@@ -82,29 +94,46 @@ async function extractLastFrameAsDataUrl(videoUrl) {
               : (job.referenceImage ? [job.referenceImage] : [])
           };`;
   const inputReplacement = `          // __CSP_AUTO_CONTINUITY_INPUT__
-          // Scene 1 uses the user's reference. Every later scene uses
-          // the exact last frame captured from the immediately previous scene.
           const sceneIndex = job.scenes.indexOf(scene);
           const previousScene = sceneIndex > 0 ? job.scenes[sceneIndex - 1] : null;
           const continuityImage = previousScene?.last_frame || null;
-          const sceneInput = {
-            ...scene,
-            mode: continuityImage ? 'reference' : scene.mode,
-            images: continuityImage
-              ? [continuityImage]
-              : (scene.images?.length
+
+          // Scene 1: preserve the exact existing input and generation behavior.
+          // Scene 2+: replace the reference with ONLY the previous scene's final image.
+          const sceneInput = sceneIndex === 0
+            ? {
+                ...scene,
+                images: scene.images?.length
                   ? scene.images
-                  : (job.referenceImage ? [job.referenceImage] : [])),
-            first_frame: null,
-            last_frame: null
-          };`;
+                  : (job.referenceImage ? [job.referenceImage] : [])
+              }
+            : {
+                ...scene,
+                mode: continuityImage ? 'reference' : scene.mode,
+                images: continuityImage
+                  ? [continuityImage]
+                  : (scene.images?.length
+                      ? scene.images
+                      : (job.referenceImage ? [job.referenceImage] : [])),
+                first_frame: null,
+                last_frame: null
+              };
+
+          console.log(
+            '[CONTINUITY] Scène ' + (sceneIndex + 1) +
+            (sceneIndex === 0
+              ? ': référence originale conservée.'
+              : (continuityImage
+                  ? ': dernière image de la scène précédente utilisée comme UNIQUE référence.'
+                  : ': ATTENTION aucune dernière image disponible, fallback conservé.'))
+          );`;
   if (!out.includes(inputNeedle)) throw new Error('CONTINUITY: scene input marker not found');
   out = out.replace(inputNeedle, inputReplacement);
 
   fs.writeFileSync(serverPath, out, 'utf8');
-  console.log('[CONTINUITY] server.js patched for automatic scene-to-scene last-frame continuity.');
+  console.log('[CONTINUITY] server.js patched: scene 1 preserved, later scenes chained from previous final frame.');
 } else {
-  console.log('[CONTINUITY] server.js already contains automatic continuity patch.');
+  console.log('[CONTINUITY] server.js already contains automatic continuity V2 patch.');
 }
 
 await import(pathToFileURL(path.join(root, 'bootstrap.mjs')).href);
