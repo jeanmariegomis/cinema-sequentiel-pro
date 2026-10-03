@@ -1653,9 +1653,13 @@ async function processJob(job) {
       try {
 
         if (!scene.videoId) {
+          // Preserve each scene's own reference image(s).
+          // Use the shared master reference only when this scene has no image of its own.
           const sceneInput = {
             ...scene,
-            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
+            images: scene.images?.length
+              ? scene.images
+              : (job.referenceImage ? [job.referenceImage] : [])
           };
           const created = await createVideoTask(sceneInput, { get: () => '' });
           scene.videoId = created.videoId;
@@ -1964,10 +1968,9 @@ app.post(
                 s.last_frame ||
                 null,
 
-              images:
-                hasSharedLegacyReference || suppliedReference
-                  ? []
-                  : images,
+              // Keep scene-specific references intact.
+              // A shared reference is only a fallback for scenes without their own image.
+              images: images,
 
               frames:
                 Number(
