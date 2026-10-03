@@ -619,7 +619,7 @@ body.auth-checking #generate-btn:disabled {
 
 
 <header>
-    <h1>Cinéma Séquentiel Pro v6</h1>
+    <h1>Cinéma Séquentiel Pro v13.1.3</h1>
     <p class="subtitle">Plan séquence continu · Référence visuelle + chaînage automatique</p>
     <button id="logout-btn" type="button" style="margin-top:.8rem;padding:.55rem .9rem;border:1px solid #34343f;border-radius:9px;background:#14141a;color:#aaaabd;font-weight:700;cursor:pointer">🔓 Se déconnecter</button>
 </header>
@@ -1462,7 +1462,10 @@ function buildScenePrompt(sceneText, sceneIndex, totalScenes, hasRef) {
 
     const continuity = `
 ABSOLUTE CONTINUITY RULES:
-- Preserve the exact same character identity from the reference image and previous scene.
+- SCENE 1 starts from the master reference image.
+- SCENE 2+ starts from the exact final frame of the immediately previous scene; the server supplies that frame automatically.
+- For SCENE 2+, the supplied previous-scene frame is the authoritative temporal starting point (frame 0). Never reset to the master reference image as the starting composition.
+- Preserve the exact same character identity from the supplied starting frame and the visual bible.
 - Same face, eyes, hairstyle, age, skin tone, body proportions and silhouette.
 - Same clothing, colors, accessories and physical details.
 - Same location architecture, furniture, props, time of day, lighting direction and visual palette.
@@ -1470,14 +1473,14 @@ ABSOLUTE CONTINUITY RULES:
 - Do not introduce unexplained new characters or objects.
 - No text, subtitles, captions, logos or watermark.
 - Maintain natural physics, hands, fingers, facial anatomy and object scale.
-- Use the master reference image as the permanent identity anchor for every scene.
-- Scenes after scene 1 must continue the narrative from the previous scene description without resetting the story, while preserving the same visual identity.
+- The master reference defines the visual bible for the film; after scene 1 it is NOT the temporal starting image.
+- Each later scene must continue directly from the previous scene without resetting the story, camera composition or character pose.
 `;
 
     const referenceInstruction = hasRef
         ? (isFirst
             ? 'MASTER REFERENCE IMAGE: The supplied reference image is authoritative for the first scene. Match its character identity, environment, framing, colors and visual design exactly, then animate naturally from that starting state.'
-            : 'MASTER REFERENCE IMAGE: The same supplied reference image is intentionally reused as the fixed character-and-world reference for this scene. Do NOT treat it as a new story reset. Preserve the exact character identity, clothing, environment, lighting and visual design while continuing the narrative described in this scene.')
+            : 'PREVIOUS SCENE FINAL FRAME: The supplied image is the exact final frame of the immediately previous scene. It is the ONLY temporal starting reference for this scene. Begin from this image as frame 0 and continue forward. Do not replace it with the master reference, do not reset the pose, and do not invent a new opening composition. The visual bible describes the stable world and character identity, while this image defines the exact starting state.')
         : 'No image reference is available. Follow the visual bible exactly and establish a stable first frame.';
 
     return `${qualityMap[state.quality] || qualityMap.anime3d}.
