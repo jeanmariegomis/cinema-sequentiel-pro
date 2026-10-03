@@ -3,7 +3,7 @@
 // It does not touch authentication, job polling, downloads, progress, or continuity state.
 
 const ORIGINAL_FETCH = globalThis.fetch;
-const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA GUARD V4]';
+const GUARD_MARKER = '[CSP GLOBAL CHARACTER/ACTION/AUDIO/CAMERA/STATE GUARD V5]';
 
 function buildGuard(prompt) {
   const text = String(prompt || '');
@@ -17,7 +17,11 @@ function buildGuard(prompt) {
     'PERMANENT SUBJECT LOCK: once a person or animal is established by the reference image and visual bible, keep that same subject present and coherent unless the scene explicitly instructs an exit, departure or intentional removal.',
     'PERSONALITY LOCK: preserve the established temperament, emotional baseline, social attitude, gaze behavior, energy level, posture, gesture style and natural mannerisms. Do not invent a smile, flirtatious attitude, excitement, surprise, anger, theatrical reaction, or personality change unless the scene explicitly causes it.',
     'EMOTIONAL CONTINUITY LOCK: expressions and emotional states must evolve gradually and have a visible narrative cause. Do not reset the character into a different emotional state merely to make the shot visually attractive.',
+    'OBJECT IDENTITY LOCK: every important prop must remain the same physical object across adjacent moments. Preserve its shape, color, material, markings, size, orientation and relationship to the subject. Do not make a bowl, cup, spoon, jug, pan or other prop disappear, reappear, duplicate or become a different object.',
+    'OBJECT STATE LOCK: preserve the current state of every important prop and substance. Keep fill level, contents, color, texture and consistency stable unless the AUTHORITATIVE SCENE PROMPT explicitly describes and visibly causes a change.',
+    'MATERIAL STATE LOCK: do not transform milk, water, juice, oil, batter, dough, sauce, powder, food or other substances into another material simply because the next action is plausible. No spontaneous liquid-to-paste, liquid-to-dough, dough-to-liquid or color/texture change.',
     'ACTION SUBJECT LOCK: only the named subject performs the named action. Keep hands, tools, objects, targets, trajectories, and physical contact consistent with the written instruction.',
+    'STATE CAUSALITY LOCK: an object or material may change state only through a continuous visible action that is explicitly described by the scene. Never perform hidden off-screen preparation or invent an unseen transformation.',
     'NO UNREQUESTED EVENTS: do not add new characters, actions, objects, accidents, reactions, transformations, story events, or dialogue merely because they are visually plausible.',
     'CAMERA SINGLE-TAKE LOCK: create one continuous physical camera take for the whole scene unless the scene prompt explicitly requests a cut. Never use an internal jump cut, instant angle replacement, teleporting viewpoint, mirrored viewpoint, snap zoom, sudden focal-length jump, or instant recomposition.',
     'CAMERA MOTION LOCK: camera pans, tilts, dollies, tracks and zooms must accelerate and decelerate progressively. When the prompt requests a later angle, reach it through a physically continuous camera movement instead of replacing the current shot with a new composition.',
@@ -78,4 +82,4 @@ globalThis.fetch = async function guardedFetch(input, init = {}) {
   return ORIGINAL_FETCH.call(this, input, init);
 };
 
-console.log('[PROMPT GUARD] Global character/animal/action/audio/camera guard V4 loaded.');
+console.log('[PROMPT GUARD] Global character/animal/action/audio/camera/state guard V5 loaded.');
