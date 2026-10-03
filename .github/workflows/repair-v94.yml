@@ -63,17 +63,30 @@ jobs:
           index.write_text(text, encoding='utf-8')
 
           s = server.read_text(encoding='utf-8')
+
           old_server = '''    // Launch immediately.\n    setImmediate(() => {\n    processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n    });\n});\n\n    return res\n      .status(202)\n      .json({\n\n        id:\n          id,\n\n        status:\n          'queued'\n      });'''
           new_server = '''    // Send the HTTP response BEFORE starting the worker.\n    // This prevents a heavy/failed worker startup from truncating the JSON response.\n    res.status(202).json({\n      id: id,\n      status: 'queued'\n    });\n\n    // Start the worker only after the response has been handed to Node.\n    setTimeout(() => {\n      processJobs().catch(error => {\n        console.error('[WORKER LAUNCH ERROR]', error);\n      });\n    }, 0);\n\n    return;'''
-          if old_server not in s:
-              raise SystemExit('server launch/response block not found')
-          s = s.replace(old_server, new_server, 1)
+          if old_server in s:
+              s = s.replace(old_server, new_server, 1)
+
+          old_worker = '''          const sceneInput = {\n            ...scene,\n            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
+          new_worker = '''          // Preserve each scene's own reference image(s).\n          // Use the shared master reference only when this scene has no image of its own.\n          const sceneInput = {\n            ...scene,\n            images: scene.images?.length\n              ? scene.images\n              : (job.referenceImage ? [job.referenceImage] : [])\n          };'''
+          if old_worker in s:
+              s = s.replace(old_worker, new_worker, 1)
+
+          old_storage = '''              images:\n                hasSharedLegacyReference || suppliedReference\n                  ? []\n                  : images,'''
+          new_storage = '''              // Keep scene-specific references intact.\n              // A shared reference is only a fallback for scenes without their own image.\n              images: images,'''
+          if old_storage in s:
+              s = s.replace(old_storage, new_storage, 1)
+
           server.write_text(s, encoding='utf-8')
 
       - name: Verify patches
         run: |
           grep -n "readJsonResponseSafe" cinema_v9/public/index.html
           grep -n "Send the HTTP response" cinema_v9/server.js
+          grep -n "Preserve each scene's own reference" cinema_v9/server.js
+          grep -n "Keep scene-specific references intact" cinema_v9/server.js
 
       - name: Commit repair
         run: |
@@ -83,6 +96,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes needed."
           else
-            git commit -m "fix: prevent empty JSON response during video generation"
+            git commit -m "fix: preserve scene-specific video references"
             git push
           fi
