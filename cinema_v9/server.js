@@ -408,6 +408,12 @@ const DATA_DIR =
     'data'
   );
 
+const CONTINUITY_FRAME_DIR =
+  path.join(
+    DATA_DIR,
+    'continuity_frames'
+  );
+
 const JOBS_FILE =
   path.join(
     DATA_DIR,
@@ -427,6 +433,13 @@ const MAX_STORED_JOBS = 100;
 
 fs.mkdirSync(
   DATA_DIR,
+  {
+    recursive: true
+  }
+);
+
+fs.mkdirSync(
+  CONTINUITY_FRAME_DIR,
   {
     recursive: true
   }
@@ -776,6 +789,12 @@ function safeJob(job) {
           model:
             s.model || null,
 
+          referenceType:
+            s.referenceType || null,
+
+          referenceReadyForNext:
+            Boolean(s.referenceReadyForNext),
+
           error:
             s.error || null
         })
@@ -972,6 +991,15 @@ function buildConsistencyPrompt(prompt) {
     'The reference image defines appearance and identity. The prompt defines the intended action and camera movement. Animate the existing subject instead of inventing a new one.',
     'SCENE INSTRUCTIONS:\n' + prompt
   ].join('\n\n');
+}
+
+function buildContinuationPrompt(prompt) {
+  return [
+    'HARD CONTINUATION START: this scene MUST begin from the supplied image as the exact final frame of the immediately previous scene. Treat the supplied image as frame 0 of this shot.',
+    'Do not restart the story from the master reference. Do not recreate a new opening pose. Do not change the camera position, framing, zoom, subject positions, hand positions, prop positions, lighting direction, or spatial relationships during the first moment. Preserve the exact composition first, then animate forward.',
+    'The supplied previous-scene frame is the temporal starting point. The visual bible and scene prompt describe what happens next. Never replace the supplied frame with a newly invented composition.',
+    buildConsistencyPrompt(prompt)
+  ].join('\\n\\n');
 }
 
 function getValidLegacyFrames(
@@ -1175,8 +1203,14 @@ async function createVideoTask(
       ? null
       : seedInfo.seed;
 
+  const sequenceIndex = Number.isInteger(Number(scene.sequenceIndex))
+    ? Number(scene.sequenceIndex)
+    : (Number.isInteger(Number(scene.index)) ? Number(scene.index) : 0);
+
   const continuityPrompt =
-    buildConsistencyPrompt(prompt);
+    sequenceIndex > 0
+      ? buildContinuationPrompt(prompt)
+      : buildConsistencyPrompt(prompt);
 
   const primaryBody = {
 
@@ -1804,6 +1838,114 @@ return videoUrl;
   );
 }
 
+// __CSP_AUTO_CONTINUITY_V2__
+// Native scene-to-scene continuity. This logic is intentionally inside
+// server.js so deployment cannot silently skip a runtime source patch.
+async function extractLastFrameAsDataUrl(videoUrl, jobId, sceneNumber) {
+  if (!videoUrl) {
+    throw new Error('Continuité: URL vidéo absente pour la scène ' + sceneNumber);
+  }
+
+  const tempId = crypto.randomUUID();
+  const inputPath = path.join(DATA_DIR, '__csp_video_' + tempId + '.mp4');
+  const outputPath = path.join(DATA_DIR, '__csp_frame_' + tempId + '.jpg');
+  const persistentPath = path.join(
+    CONTINUITY_FRAME_DIR,
+    String(jobId) + '_scene_' + String(sceneNumber) + '.jpg'
+  );
+
+  try {
+    console.log('[CONTINUITY] Téléchargement scène ' + sceneNumber + ' pour capturer sa dernière image…');
+    const response = await fetchWithTimeout(
+      videoUrl,
+      {},
+      AGNES_REQUEST_TIMEOUT_MS
+    );
+
+    if (!response.ok) {
+      throw new Error('Téléchargement vidéo HTTP ' + response.status);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) {
+      throw new Error('Vidéo terminée mais vide');
+    }
+    fs.writeFileSync(inputPath, buffer);
+
+    const { default: ffmpegInstaller } = await import('@ffmpeg-installer/ffmpeg');
+    const { spawn } = await import('child_process');
+
+    await new Promise((resolve, reject) => {
+      const child = spawn(
+        ffmpegInstaller.path,
+        [
+          '-y',
+          '-sseof', '-0.01',
+          '-i', inputPath,
+          '-frames:v', '1',
+          '-q:v', '2',
+          outputPath
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe'] }
+      );
+
+      let stderr = '';
+      child.stderr.on('data', chunk => {
+        stderr += chunk.toString();
+      });
+      child.on('error', reject);
+      child.on('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error('FFmpeg dernière frame failed (' + code + '): ' + stderr.slice(-1200)));
+      });
+    });
+
+    const jpg = fs.readFileSync(outputPath);
+    if (!jpg.length) {
+      throw new Error('Image finale vide');
+    }
+
+    fs.writeFileSync(persistentPath, jpg);
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(jpg)
+      .digest('hex');
+
+    console.log(
+      '[CONTINUITY] Scène ' + sceneNumber +
+      ' → dernière image capturée (' +
+      Math.round(jpg.length / 1024) +
+      ' KB, sha256=' + hash.slice(0, 16) + '…)'
+    );
+
+    return {
+      dataUrl: 'data:image/jpeg;base64,' + jpg.toString('base64'),
+      filePath: persistentPath,
+      hash
+    };
+  } finally {
+    for (const file of [inputPath, outputPath]) {
+      try { fs.unlinkSync(file); } catch (_) {}
+    }
+  }
+}
+
+function restorePersistedContinuityFrame(scene) {
+  if (scene?.last_frame) return scene.last_frame;
+
+  const filePath = String(scene?.last_frame_path || '');
+  if (!filePath) return null;
+
+  try {
+    const jpg = fs.readFileSync(filePath);
+    if (!jpg.length) return null;
+    return 'data:image/jpeg;base64,' + jpg.toString('base64');
+  } catch (_) {
+    return null;
+  }
+}
+
 // ============================================================
 // JOB WORKER
 // ============================================================
@@ -1847,15 +1989,63 @@ async function processJob(job) {
 
       try {
 
+        const sceneIndex = job.scenes.indexOf(scene);
+        const sceneNumber = sceneIndex + 1;
+        const previousScene = sceneIndex > 0 ? job.scenes[sceneIndex - 1] : null;
+
         if (!scene.videoId) {
-          const sceneInput = {
-            ...scene,
-            images: scene.images?.length ? scene.images : (job.referenceImage ? [job.referenceImage] : [])
-          };
+          let sceneInput;
+
+          if (sceneIndex === 0) {
+            sceneInput = {
+              ...scene,
+              sequenceIndex: 0,
+              mode: 'reference',
+              images: scene.images?.length
+                ? scene.images
+                : (job.referenceImage ? [job.referenceImage] : [])
+            };
+
+            console.log(
+              '[CONTINUITY] Scène 1 → image maître originale utilisée comme référence de départ.'
+            );
+          } else {
+            const continuityImage = restorePersistedContinuityFrame(previousScene);
+
+            if (!continuityImage) {
+              throw new Error(
+                'Continuité impossible : la dernière image de la scène ' +
+                sceneIndex +
+                ' est introuvable. Aucun fallback vers l’image maître n’est autorisé.'
+              );
+            }
+
+            sceneInput = {
+              ...scene,
+              sequenceIndex: sceneIndex,
+              mode: 'reference',
+              images: [continuityImage],
+              first_frame: null,
+              last_frame: null
+            };
+
+            console.log(
+              '[CONTINUITY] Scène ' + sceneNumber +
+              ' → UNIQUE référence = dernière image de la scène ' +
+              sceneIndex +
+              ', longueur=' +
+              Math.round(continuityImage.length / 1024) +
+              ' KB.'
+            );
+          }
+
           const created = await createVideoTask(sceneInput, { get: () => '' });
           scene.videoId = created.videoId;
           scene.model = created.model;
-          updateJob(job);        }
+          scene.sequenceIndex = sceneIndex;
+          scene.referenceType = sceneIndex === 0 ? 'initial' : 'previous-last-frame';
+          updateJob(job);
+        }
 
         scene.videoUrl =
           await pollVideo(
@@ -1870,6 +2060,30 @@ async function processJob(job) {
           scene.videoUrl = null;
           updateJob(job);
           break;
+        }
+
+        if (sceneIndex < job.scenes.length - 1) {
+          try {
+            const captured = await extractLastFrameAsDataUrl(
+              scene.videoUrl,
+              job.id,
+              sceneNumber
+            );
+            scene.last_frame = captured.dataUrl;
+            scene.last_frame_path = captured.filePath;
+            scene.last_frame_hash = captured.hash;
+            scene.referenceReadyForNext = true;
+            console.log(
+              '[CONTINUITY] Scène ' + sceneNumber +
+              ' → frame finale prête pour la scène ' + (sceneNumber + 1) + '.'
+            );
+          } catch (frameError) {
+            throw new Error(
+              'Continuité scène ' + sceneNumber +
+              ' : impossible d’extraire la dernière image — ' +
+              String(frameError?.message || frameError)
+            );
+          }
         }
 
         scene.status =
@@ -2091,7 +2305,7 @@ app.post(
 
       scenes:
         scenes.map(
-          s => {
+          (s, i) => {
 
             const legacyImage =
               s.image ||
@@ -2130,6 +2344,9 @@ app.post(
                 String(
                   s.prompt || ''
                 ),
+
+              sequenceIndex:
+                i,
 
               mode:
                 s.mode ||
