@@ -949,25 +949,10 @@ function fingerprintImage(value) {
 }
 
 
-function makeProjectSeed(referenceImage, visualBible) {
-  const material = JSON.stringify({
-    purpose: 'cinema-sequentiel-pro-v2-project-seed',
-    reference: fingerprintImage(referenceImage),
-    visualBible: normalizeSeedPrompt(visualBible || '')
-  });
-
-  const digest = crypto
-    .createHash('sha256')
-    .update(material, 'utf8')
-    .digest();
-
-  return digest.readUInt32BE(0);
-}
-
-function makeProjectAudioSignature(projectSeed, visualBible) {
+function makeProjectAudioSignature(referenceImage, visualBible) {
   const material = JSON.stringify({
     purpose: 'cinema-sequentiel-pro-v2-audio-identity',
-    projectSeed: projectSeed ?? null,
+    reference: fingerprintImage(referenceImage),
     visualBible: normalizeSeedPrompt(visualBible || '')
   });
 
@@ -985,7 +970,6 @@ function makeDeterministicSeed(
   mode,
   dimensions,
   validFrames,
-  projectSeed = null,
   continuityRetry = 0
 ) {
   if (!AGNES_DETERMINISTIC_SEED) {
@@ -1004,25 +988,7 @@ function makeDeterministicSeed(
 
   const normalizedPrompt = normalizeSeedPrompt(prompt);
 
-  if (
-    Number.isSafeInteger(Number(projectSeed)) &&
-    Number(projectSeed) >= 0 &&
-    continuityRetry === 0
-  ) {
-    return {
-      seed: Number(projectSeed),
-      promptHash: crypto
-        .createHash('sha256')
-        .update(normalizedPrompt, 'utf8')
-        .digest('hex')
-        .slice(0, 16),
-      imageHashes: images
-        .map(fingerprintImage)
-        .filter(Boolean)
-        .map(hash => hash.slice(0, 16)),
-      scope: 'project'
-    };
-  }
+
   const imageFingerprints = images
     .map(fingerprintImage)
     .filter(Boolean);
@@ -1035,10 +1001,6 @@ function makeDeterministicSeed(
     height: dimensions.height,
     frames: validFrames,
     frame_rate: FRAME_RATE,
-    projectSeed:
-      Number.isSafeInteger(Number(projectSeed))
-        ? Number(projectSeed)
-        : null,
     continuityRetry: Number(continuityRetry) || 0,
     retrySalt:
       continuityRetry > 0
@@ -1330,9 +1292,6 @@ async function createVideoTask(
       mode,
       dimensions,
       validFrames,
-      Number.isSafeInteger(Number(scene.projectSeed))
-        ? Number(scene.projectSeed)
-        : null,
       Number(scene.continuityRetry) || 0
     );
 
@@ -2397,7 +2356,6 @@ async function processJob(job) {
               ...scene,
               sequenceIndex: 0,
               mode: 'reference',
-              projectSeed: job.projectSeed,
               audioSignature: job.audioSignature,
               continuityRetry
             };
@@ -2421,7 +2379,6 @@ async function processJob(job) {
               ...scene,
               sequenceIndex: sceneIndex,
               mode: 'reference',
-              projectSeed: job.projectSeed,
               audioSignature: job.audioSignature,
               continuityRetry,
               images: [
@@ -2790,22 +2747,14 @@ app.post(
         ? visualBible.trim().slice(0, 12000)
         : '';
 
-    const projectSeed =
-      makeProjectSeed(
+    const audioSignature =
+      makeProjectAudioSignature(
         sharedReference,
         cleanVisualBible
       );
 
-    const audioSignature =
-      makeProjectAudioSignature(
-        projectSeed,
-        cleanVisualBible
-      );
-
     console.log(
-      '[SEQUENCE IDENTITY] projectSeed=' +
-      projectSeed +
-      ' audioSignature=' +
+      '[SEQUENCE IDENTITY] audioSignature=' +
       audioSignature
     );
 
@@ -2833,8 +2782,6 @@ app.post(
       // Permanent project-level identity/environment anchor reused by every scene.
       visualBible:
         cleanVisualBible,
-
-      projectSeed,
 
       audioSignature,
 
