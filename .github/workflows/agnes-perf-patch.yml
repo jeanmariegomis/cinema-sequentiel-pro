@@ -1,4 +1,4 @@
-name: One-time Agnes performance patch
+name: One-time Agnes performance patch v2
 
 on:
   push:
@@ -63,8 +63,10 @@ jobs:
           grep -n "agnes-video-v2.0" cinema_v9/server.js
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cinema_v9/server.js .github/workflows/agnes-perf-patch.yml
-          git rm .github/workflows/repair-v94.yml || true
-          git rm .github/workflows/agnes-perf-patch.yml
-          git commit -m "perf: reduce Agnes completion polling latency"
-          git push
+          git add cinema_v9/server.js
+          if git diff --cached --quiet; then
+            echo "No server changes needed."
+          else
+            git commit -m "perf: reduce Agnes completion polling latency"
+            git push
+          fi
