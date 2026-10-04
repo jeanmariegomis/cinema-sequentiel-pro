@@ -577,14 +577,10 @@ body.auth-checking #generate-btn:disabled {
       setTimeout(syncGenerateButton, 500);
     });
 
-    const observer = new MutationObserver(syncGenerateButton);
-    observer.observe(btn.parentElement || document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class','style','disabled']
-    });
-
+    // IMPORTANT: do not observe the button's parent for attribute mutations.
+    // syncGenerateButton() changes "disabled", which would retrigger the observer
+    // indefinitely on mobile browsers and freeze the UI when the reference image
+    // is selected or generation is started.
     syncGenerateButton();
     setTimeout(syncGenerateButton, 250);
     setTimeout(syncGenerateButton, 1000);
