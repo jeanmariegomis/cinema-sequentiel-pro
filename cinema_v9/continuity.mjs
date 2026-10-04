@@ -20,8 +20,19 @@ if (!out.includes('/* __CSP_AUTH_OVERLAY_DISABLED_V4__ */')) {
   }
   out = out.replace(
     marker,
-    marker + '\n/* __CSP_AUTH_OVERLAY_DISABLED_V4__ */\n#auth-loading{display:none!important;}'
+    marker + '\n/* __CSP_AUTH_OVERLAY_DISABLED_V4__ */\n#auth-loading{display:none!important;visibility:hidden!important;pointer-events:none!important;}\nbody.auth-checking > :not(#auth-loading){visibility:visible!important;}'
   );
+}
+
+// Final client-side safety net: an obsolete auth script must never be able to
+// re-lock the already authenticated application a few seconds after startup.
+if (!out.includes('__CSP_AUTH_OVERLAY_KILL_SWITCH_V1__')) {
+  const marker = '</head>';
+  if (!out.includes(marker)) {
+    throw new Error('AUTH FIX: head marker not found');
+  }
+  const guard = `\n<script id="__CSP_AUTH_OVERLAY_KILL_SWITCH_V1__">\n(function(){\n  function unlock(){\n    try{\n      document.body && document.body.classList.remove('auth-checking');\n      var el=document.getElementById('auth-loading');\n      if(el){el.style.setProperty('display','none','important');el.style.setProperty('visibility','hidden','important');el.style.setProperty('pointer-events','none','important');}\n    }catch(_){}\n  }\n  unlock();\n  document.addEventListener('DOMContentLoaded',unlock,{once:false});\n  new MutationObserver(unlock).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});\n  setInterval(unlock,1000);\n})();\n</script>\n`;
+  out = out.replace(marker, guard + marker);
 }
 
 if (out !== source) {
