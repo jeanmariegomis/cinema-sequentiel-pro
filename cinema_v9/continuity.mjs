@@ -8,36 +8,34 @@ const indexPath = path.join(root, 'public', 'index.html');
 const source = fs.readFileSync(indexPath, 'utf8');
 let out = source;
 
-// The server has already completed the login redirect before this page is
-// reached. The old client-side overlay had no reliable release path and could
-// remain forever on mobile browsers. Remove the redundant visual gate.
-out = out.replace('<body class="auth-checking">', '<body>');
+// The server has already authenticated the request before index.html is served.
+// Do not keep a permanent client-side visual lock around the application.
+out = out.replace(/<body\s+class=["']auth-checking["']>/i, '<body>');
 
-if (!out.includes('/* __CSP_AUTH_OVERLAY_DISABLED_V4__ */')) {
+// Disable the obsolete overlay without installing observers, polling loops, or
+// other runtime hooks. The previous MutationObserver watched class/style
+// mutations while its own unlock() function changed style, which could create
+// a self-triggering mutation loop and freeze mobile browsers.
+if (!out.includes('__CSP_AUTH_OVERLAY_DISABLED_V5__')) {
   const marker = '<style id="auth-guard-style">';
-  if (!out.includes(marker)) {
-    throw new Error('AUTH FIX: auth guard style target not found');
-  }
+  if (!out.includes(marker)) throw new Error('AUTH FIX: auth guard style target not found');
   out = out.replace(
     marker,
-    marker + '\n/* __CSP_AUTH_OVERLAY_DISABLED_V4__ */\n#auth-loading{display:none!important;visibility:hidden!important;pointer-events:none!important;}\nbody.auth-checking > :not(#auth-loading){visibility:visible!important;}'
+    marker + '\n/* __CSP_AUTH_OVERLAY_DISABLED_V5__ */\n#auth-loading{display:none!important;visibility:hidden!important;pointer-events:none!important;}\nbody.auth-checking > :not(#auth-loading){visibility:visible!important;}'
   );
 }
 
-// Final client-side safety net: an obsolete auth script must never be able to
-// re-lock the already authenticated application a few seconds after startup.
-if (!out.includes('__CSP_AUTH_OVERLAY_KILL_SWITCH_V1__')) {
+// Safe one-shot cleanup only. No MutationObserver and no setInterval.
+if (!out.includes('__CSP_AUTH_OVERLAY_KILL_SWITCH_V2__')) {
   const marker = '</head>';
-  if (!out.includes(marker)) {
-    throw new Error('AUTH FIX: head marker not found');
-  }
-  const guard = `\n<script id="__CSP_AUTH_OVERLAY_KILL_SWITCH_V1__">\n(function(){\n  function unlock(){\n    try{\n      document.body && document.body.classList.remove('auth-checking');\n      var el=document.getElementById('auth-loading');\n      if(el){el.style.setProperty('display','none','important');el.style.setProperty('visibility','hidden','important');el.style.setProperty('pointer-events','none','important');}\n    }catch(_){}\n  }\n  unlock();\n  document.addEventListener('DOMContentLoaded',unlock,{once:false});\n  new MutationObserver(unlock).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});\n  setInterval(unlock,1000);\n})();\n</script>\n`;
+  if (!out.includes(marker)) throw new Error('AUTH FIX: head marker not found');
+  const guard = `\n<script id="__CSP_AUTH_OVERLAY_KILL_SWITCH_V2__">\n(function(){\n  function unlock(){\n    try{\n      if(document.body) document.body.classList.remove('auth-checking');\n      var el=document.getElementById('auth-loading');\n      if(el){\n        el.style.display='none';\n        el.setAttribute('aria-hidden','true');\n      }\n    }catch(_){}\n  }\n  unlock();\n  document.addEventListener('DOMContentLoaded',unlock,{once:true});\n  setTimeout(unlock,1500);\n  setTimeout(unlock,4000);\n})();\n</script>\n`;
   out = out.replace(marker, guard + marker);
 }
 
 if (out !== source) {
   fs.writeFileSync(indexPath, out, 'utf8');
-  console.log('[AUTH FIX] public/index.html: patched');
+  console.log('[AUTH FIX] public/index.html: patched without runtime observer');
 } else {
   console.log('[AUTH FIX] public/index.html: already patched');
 }
